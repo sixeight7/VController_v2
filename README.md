@@ -20,11 +20,11 @@ See my project blog for details and schematic.
 Developed on Teensy 3.2 
 Make sure you have the https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads/LiquidCrystal_V1.2.1.zip library installed. It is the only non-standard library used in this sketch.
 
-Start with VController_v2.ino to browse this code. It has the main setup and loop from where all the other files are called.
+Start with VController_v2.ino in the VController_v2 folder to browse this code. It has the main setup and loop from where all the other files are called.
 
 I tried to seperate the different tasks of the VController in the different files. Complete seperation is not possible, but it helps a great deal in finding stuff back.
 
-Short desciption of each file:
+Short desciption of each file in the VController_v2 folder:
 
 * VController_v2.ino: The main file, that will call all the other ones in the right order.
 * Commands.ino: shows the commands that can be used in the configuration of the VController
