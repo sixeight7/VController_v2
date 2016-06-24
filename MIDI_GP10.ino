@@ -45,6 +45,7 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
         GP10_assign_read = false; // Assigns should be read again
         GP10_page_check();
         GP10_do_after_patch_selection();
+        update_parameter_lcds = FULL;
       }
     }
 
@@ -56,7 +57,7 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 12; count++) {
             SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 12]); //Add ascii character to the SP.Label String
           }
-          update_lcd = current_parameter + 1;
+          //update_lcd = current_parameter + 1;
           if (SP[current_parameter].PP_number == GP10_patch_number) {
             GP10_patch_name = SP[current_parameter].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
@@ -89,7 +90,7 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
 void check_PC_in_GP10(byte channel, byte program) {  // Check incoming PC messages from GP10. Called from MIDI:OnProgramChange
 
   // Check the source by checking the channel
-  if (channel == GP10_MIDI_channel) { // GP10 outputs a program change
+  if ((Current_MIDI_port == GP10_MIDI_port) && (channel == GP10_MIDI_channel)) { // GP10 outputs a program change
     if (GP10_patch_number != program) {
       GP10_patch_number = program;
       GP10_assign_read = false; // Assigns should be read again
@@ -112,7 +113,7 @@ void GP10_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     //write_GP10(GP10_EDITOR_MODE_ON); // Put the GP10 in EDITOR mode - otherwise tuner will not work
     GP10_do_after_patch_selection();
     GP10_assign_read = false; // Assigns should be read again
-    load_current_page();
+    load_current_page(true);
   }
 }
 
@@ -204,6 +205,7 @@ void GP10_do_after_patch_selection() {
   Current_device = GP10;
   update_LEDS = true;
   update_main_lcd = true;
+  update_parameter_lcds = PARAMETERS;
   GP10_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GP10_PATCH_NUMBER, GP10_patch_number);
 
@@ -224,15 +226,11 @@ void GP10_patch_load(uint8_t sw, uint8_t number) {
 }
 
 void GP10_patch_select(uint16_t new_patch) {
-
-  //if (my_switch <= bank_size) {
-  //if (GP10_bank_selection_active == false) GP10_bank_number = (GP10_patch_number / bank_size); //Reset the bank to current patch
-  //uint8_t new_patch = (GP10_bank_number) * bank_size + (my_switch - 1);
-  //uint16_t new_patch = SP[my_switch - 1].PP_number;
+  
   if (new_patch == GP10_patch_number) GP10_select_switch();
   else GP10_SendProgramChange(new_patch);
   GP10_bank_selection_active = false;
-  //}
+
 }
 
 void GP10_bank_updown(bool updown, uint8_t bank_size) {
@@ -256,7 +254,7 @@ void GP10_bank_updown(bool updown, uint8_t bank_size) {
 
   if (GP10_bank_number == bank_number) GP10_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(); //Re-read the patchnames for this bank
+  load_current_page(true); //Re-read the patchnames for this bank
 }
 
 void GP10_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -267,7 +265,7 @@ void GP10_page_check() { // Checks if the current patch is on the page and will 
       GP10_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page();
+  if (!onpage) load_current_page(true);
 }
 
 // ** US-20 simulation
@@ -346,7 +344,7 @@ void GP10_mute() {
 // ********************************* Section 5: GP10 parameter and assign control ********************************************
 
 // Procedures for the GP10_PARAMETER:
-// 1. Load in SP array - in load_current_page()
+// 1. Load in SP array - in load_current_page(true)
 // 2. Request parameter state - in Request_current_parameter()
 // 3. Read parameter state - GP10_read_parameter() below
 // 4. Press switch - GP10_parameter_press() below - also calls GP10_check_update_label()
@@ -444,7 +442,7 @@ void GP10_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
   GP10_check_update_label(Sw, value);
   show_status_message(SP[Sw].Label);
 
-  load_current_page(); // To update the other switch states, we re-load the current page
+  load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void GP10_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
@@ -453,7 +451,7 @@ void GP10_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_GP10(GP10_parameters[number].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(); // To update the other switch states, we re-load the current page
+    load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -496,7 +494,7 @@ void GP10_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GP10
   }
   //Copy it to the display name:
   set_label(current_parameter, msg);
-  update_lcd = current_parameter + 1;
+  //update_lcd = current_parameter + 1;
 }
 
 void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -511,7 +509,7 @@ void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      update_lcd = current_parameter + 1;
+      //update_lcd = current_parameter + 1;
     }
   }
 }
@@ -555,7 +553,7 @@ void GP10_assign_press(uint8_t Sw) { // Switch set to GP10_ASSIGN is pressed
   }
   show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void GP10_assign_release(uint8_t Sw) { // Switch set to GP10_ASSIGN is released
@@ -568,7 +566,7 @@ void GP10_assign_release(uint8_t Sw) { // Switch set to GP10_ASSIGN is released
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 

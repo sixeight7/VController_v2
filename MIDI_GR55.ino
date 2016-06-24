@@ -48,7 +48,7 @@ void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 16; count++) {
             SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          update_lcd = current_parameter + 1;
+          //update_lcd = current_parameter + 1;
           if (SP[current_parameter].PP_number == GR55_patch_number) {
             GR55_patch_name = SP[current_parameter].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
@@ -82,7 +82,7 @@ void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlengt
 void check_PC_in_GR55(byte channel, byte program) { // Check incoming PC messages from GR55. Called from MIDI:OnProgramChange
 
   // Check the source by checking the channel
-  if (channel == GR55_MIDI_channel) { // GR55 outputs a program change
+  if ((Current_MIDI_port == GR55_MIDI_port) && (channel == GR55_MIDI_channel)) { // GR55 outputs a program change
     uint16_t new_patch = (GR55_CC01 * 128) + program;
     if (GR55_patch_number != new_patch) {
       GR55_patch_number = new_patch;
@@ -104,7 +104,7 @@ void GR55_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     DEBUGMSG("GR-55 detected on MIDI port" + String(Current_MIDI_port));
     request_GR55(GR55_REQUEST_PATCH_NUMBER);
     GR55_do_after_patch_selection();
-    load_current_page();
+    load_current_page(true);
   }
 }
 
@@ -198,6 +198,7 @@ void GR55_do_after_patch_selection() {
   Current_device = GR55;
   update_LEDS = true;
   update_main_lcd = true;
+  update_parameter_lcds = PARAMETERS;
   GR55_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GR55_PATCH_MSB, (GR55_patch_number / 256));
   //EEPROM.write(EEPROM_GR55_PATCH_LSB, (GR55_patch_number % 256));
@@ -249,7 +250,7 @@ void GR55_bank_updown(bool updown, uint8_t bank_size) {
 
   if (GR55_bank_number == bank_number) GR55_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(); //Re-read the patchnames for this bank
+  load_current_page(true); //Re-read the patchnames for this bank
 }
 
 void GR55_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -260,7 +261,7 @@ void GR55_page_check() { // Checks if the current patch is on the page and will 
       GR55_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page();
+  if (!onpage) load_current_page(true);
 }
 
 // ** US-20 simulation
@@ -355,7 +356,7 @@ void GR55_mute_now() { // Needed a second version, because the GR55 must always 
 // Procedures for the GR55_PARAMETER and GR55_ASSIGN commands
 
 // Procedures for the GR55_PARAMETER:
-// 1. Load in SP array - in load_current_page()
+// 1. Load in SP array - in load_current_page(true)
 // 2. Request parameter state - in Request_current_parameter()
 // 3. Read parameter state - GR55_read_parameter() below
 // 4. Press switch - GR55_parameter_press() below - also calls GR55_check_update_label()
@@ -484,7 +485,7 @@ void GR55_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
   GR55_check_update_label(Sw, value);
   show_status_message(SP[Sw].Label);
 
-  load_current_page(); // To update the other switch states, we re-load the current page
+  load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void GR55_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
@@ -493,7 +494,7 @@ void GR55_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_GR55(GR55_parameters[number].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(); // To update the other switch states, we re-load the current page
+    load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -563,7 +564,7 @@ void GR55_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GR55
   }
   //Copy it to the display name:
   set_label(current_parameter, msg);
-  update_lcd = current_parameter + 1;
+  //update_lcd = current_parameter + 1;
 }
 
 void GR55_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -578,7 +579,7 @@ void GR55_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      update_lcd = current_parameter + 1;
+      //update_lcd = current_parameter + 1;
     }
   }
 }
@@ -611,7 +612,7 @@ void GR55_assign_press(uint8_t Sw) { // Switch set to GR55_ASSIGN is pressed
   }
   show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void GR55_assign_release(uint8_t Sw) { // Switch set to GR55_ASSIGN is released
@@ -624,7 +625,7 @@ void GR55_assign_release(uint8_t Sw) { // Switch set to GR55_ASSIGN is released
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 

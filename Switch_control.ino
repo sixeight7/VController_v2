@@ -3,14 +3,14 @@
 void setup_switch_control()
 {
   //reset_all_switch_states();
-  //load_current_page();
+  //load_current_page(true);
 }
 
 // Do something with buttons being pressed
 void main_switch_control()  // Checks if a button has been pressed and check out which functions have to be executed
 {
   if (switch_pressed > 0) {
-    if (switch_pressed > 16) show_status_message("Switch "+String(switch_pressed));
+    if (switch_pressed > 16) show_status_message("Switch " + String(switch_pressed));
     else switch_pressed_commands(Current_page, switch_pressed - 1);
   }
 
@@ -20,6 +20,7 @@ void main_switch_control()  // Checks if a button has been pressed and check out
 
   if (switch_long_pressed > 0) {
     //switch_long_pressed_commands(Current_page, switch_long_pressed - 1);
+    if (switch_long_pressed == 16) Switch_VController_standbye(); //Switch VController on/off on long press button 16
   }
 
   update_tap_tempo_LED();
@@ -114,6 +115,26 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
       case VG99_MUTE:
         VG99_mute();
         break;
+      case ZG3_PATCH:
+        ZG3_patch_select(Data1 - 1);
+        ZG3_Remember_FXs(Sw);
+        ZG3_patch_name = SP[Sw].Label; // Store current patch name
+        break;
+      case ZG3_RELSEL:
+        ZG3_patch_select(SP[Sw].PP_number);
+        ZG3_Remember_FXs(Sw);
+        ZG3_patch_name = SP[Sw].Label; // Store current patch name
+        break;
+      case ZG3_BANK_UP:
+        ZG3_bank_updown(UP, Data1);
+        break;
+      case ZG3_BANK_DOWN:
+        ZG3_bank_updown(DOWN, Data1);
+        break;
+      case ZG3_FX_TOGGLE:
+        if (c == 0) update_parameter_state(Sw);
+        ZG3_FX_press(Sw, c, Data1);
+        break;
       case SELECT_PAGE:
         select_page(Data1);
         break;
@@ -122,6 +143,9 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
         break;
       case COMBI_BANK_DOWN:
         combi_bank_updown(DOWN, Data1);
+        break;
+      case STANDBYE:
+        Switch_VController_on();
         break;
       case MIDI_PC:
         Send_PC(Data1, Data2, Page[Pg].Switch[Sw].Cmd[c].Value1);
@@ -194,7 +218,7 @@ void update_parameter_state(uint8_t Sw) {
       SP[Sw].State++;
       if (SP[Sw].State > 5) SP[Sw].State = 1;
       break;
-  } 
+  }
 }
 
 void reset_all_switch_states() {
@@ -210,7 +234,7 @@ void select_page(uint8_t new_page) {
   previous_page = Current_page; // Store the mode we come from...
   Current_page = new_page;
   //EEPROM.write(EEPROM_mode, Current_page);
-  load_current_page();
+  load_current_page(true);
 }
 
 void toggle_page(uint8_t page1, uint8_t page2) {
@@ -278,6 +302,7 @@ void global_tap_tempo_press() {
     GP10_send_bpm();
     GR55_send_bpm();
     VG99_send_bpm();
+    ZG3_send_bpm();
 
     // Move to the next memory slot
     tap_time_index++;
@@ -351,4 +376,38 @@ void bass_mode_note_off(byte channel, byte note, byte velocity) {
   }
 }
 
+void Switch_VController_toggle() {
+  if (VController_on) Switch_VController_standbye();
+  else Switch_VController_on();
+}
 
+void Switch_VController_standbye() {
+  // Store current values in memory
+  VController_on = false;
+  Current_page = previous_page; // Undo the page change of button 16
+  write_eeprom_common_data();
+
+  // Select page 0 - it has all LEDs and switches turned off
+  select_page(0);
+
+  // Turn off LCD backlights
+  LCD_backlight_off();
+}
+
+void Switch_VController_on() {
+  // Store current values in memory
+  VController_on = true;
+  read_eeprom_common_data();
+
+  // Turn off LCD backlights
+  LCD_backlight_on();
+
+  // Select page
+  if (Current_page == 0) Current_page = 1; // Check if it is not zero - otherwise you cannot switch the VController on
+  select_page(Current_page);
+
+  // Show startup message
+  Main_lcd.home(); // go home
+  Main_lcd.print("V-controller v2");  // Show startup message
+  show_status_message("  by SixEight");  //Please give me the credits :-)
+}

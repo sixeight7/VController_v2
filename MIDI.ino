@@ -2,6 +2,9 @@
 // Setup of usbMIDI and Serial midi in and out
 // Specific messages are listed under MIDI_GP10, MIDI_GR55 and MIDI_VG99
 
+// Change buffersize of usbMIDI:
+// Edit /Applications/Arduino.app/Contents/Resources/Java/hardware/teensy/avr/cores/teensy3/usb_midi.h in Teksteditor and change USB_MIDI_SYSEX_MAX 127
+
 #include <MIDI.h>
 
 #define CHECK4DEVICES_TIMER_LENGTH 1000 // Check every three seconds which Roland devices are connected
@@ -90,9 +93,11 @@ void OnNoteOff(byte channel, byte note, byte velocity)
 
 void OnProgramChange(byte channel, byte program)
 {
+  DEBUGMSG("PC #" + String(program) + " received on channel " + String(channel)); // Show on serial debug screen
   check_PC_in_GP10(channel, program);
   check_PC_in_GR55(channel, program);
   check_PC_in_VG99(channel, program);
+  check_PC_in_ZG3(channel, program);
 }
 
 void OnControlChange(byte channel, byte control, byte value)
@@ -132,6 +137,10 @@ void OnSysEx(const unsigned char* sxdata, short unsigned int sxlength, bool sx_c
 
   }
 
+  if (sxdata[1] == 0x52) { //Check if it is a message from a ZOOM device
+    check_SYSEX_in_ZG3(sxdata, sxlength);
+  }
+
   if (sxdata[1] == 0x7E) { //Check if it is a Universal Non-Real Time message
     check_SYSEX_in_universal(sxdata, sxlength);
   }
@@ -147,6 +156,10 @@ void OnSerialSysEx(byte *sxdata, unsigned sxlength)
     check_SYSEX_in_GR55(sxdata, sxlength);
     check_SYSEX_in_VG99(sxdata, sxlength);
     check_SYSEX_in_VG99fc(sxdata, sxlength);
+  }
+
+  if (sxdata[1] == 0x52) { //Check if it is a message from a ZOOM device
+    check_SYSEX_in_ZG3(sxdata, sxlength);
   }
 
   if (sxdata[1] == 0x7E) { //Check if it is a Universal Non-Real Time message
@@ -196,6 +209,11 @@ void check_SYSEX_in_universal(const unsigned char* sxdata, short unsigned int sx
     GR55_identity_check(sxdata, sxlength);
     VG99_identity_check(sxdata, sxlength);
     //FC300_identity_check(sxdata, sxlength);
+  }
+  
+  // Check if it is an identity reply from Zoom
+  if ((sxdata[3] == 0x06) && (sxdata[4] == 0x02) && (sxdata[5] == 0x52)) {
+    ZG3_identity_check(sxdata, sxlength);
   }
 }
 

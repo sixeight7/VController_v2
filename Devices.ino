@@ -2,8 +2,10 @@
 #define GP10 1
 #define GR55 2
 #define VG99 3
+#define ZG3 4
 
 // Common settings
+bool VController_on = false;
 bool SEND_GLOBAL_TEMPO_AFTER_PATCH_CHANGE = true; // If true, the tempo of all patches will remain the same. Set it by using the tap tempo of the V-Controller
 bool US20_emulation_active = true; // Switch software emulation of US20 on and off
 
@@ -31,7 +33,7 @@ uint8_t GP10_bank_size = 10;
 boolean GP10_detected = false;
 boolean GP10_bank_selection_active = false;
 bool GP10_on = false;
-bool GP10_always_on = false;
+bool GP10_always_on = true;
 uint8_t GP10_COSM_onoff = 0;
 uint8_t GP10_nrml_pu_onoff = 0;
 //uint8_t GP10_select_LED;
@@ -60,7 +62,7 @@ boolean GR55_detected = false;
 boolean GR55_bank_selection_active = false;
 uint8_t GR55_preset_banks = 40; // Default number of preset banks is 40. When we are in bass mode, there are only 12.
 bool GR55_on = false;
-bool GR55_always_on = false;
+bool GR55_always_on = true;
 uint8_t GR55_synth1_onoff = 0;
 uint8_t GR55_synth2_onoff = 0;
 uint8_t GR55_COSM_onoff = 0;
@@ -85,10 +87,26 @@ uint8_t VG99_CC01 = 0;    // the MIDI CC #01 sent by the GR-55
 boolean VG99_detected = false;
 boolean VG99_bank_selection_active = false;
 bool VG99_on = false;
-bool VG99_always_on = false;
+bool VG99_always_on = true;
 uint8_t VG99_COSM_A_onoff = 0;
 uint8_t VG99_COSM_B_onoff = 0;
 //uint8_t VG99_select_LED;
+
+// Zoom G3 settings:
+#define ZG3_MIDI_CHANNEL 1
+// Zoom G3 patch extend (when using bank up/down) - set values between 0 and 99.
+#define ZG3_PATCH_MIN 0
+#define ZG3_PATCH_MAX 99
+
+// Zoom G3 variables:
+uint8_t ZG3_MIDI_channel = ZG3_MIDI_CHANNEL;
+boolean ZG3_detected = false;
+uint8_t ZG3_device_id;
+uint8_t ZG3_patch_number = 0;
+uint8_t ZG3_bank_number = 0;
+uint8_t ZG3_bank_size = 10;
+boolean ZG3_bank_selection_active = false;
+bool ZG3_on = false;
 
 uint16_t bpm=120;
 

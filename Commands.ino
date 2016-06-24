@@ -8,6 +8,7 @@
 #define COMBI_BANK_UP 03
 #define COMBI_BANK_DOWN 04
 #define TAP_TEMPO 05
+#define STANDBYE 06
 
 //10 - 19 General MIDI commands
 #define MIDI_PC 10   // Command: {MIDI_PC, Program, Channel, Port}
@@ -43,6 +44,14 @@ String GR55_patch_name = "                "; // Patchname displayed in the main 
 #define VG99_ASSIGN 45 //Command: {GP10_ASSIGN, assign_number, cc_number}
 #define VG99_MUTE 46 //Command: {VG99_MUTE} - will mute the VG99, unless VG99_always_on is true
 String VG99_patch_name = "                "; // Patchname displayed in the main display
+
+//50 - 59: Boss GP10 types
+#define ZG3_PATCH 50  //Command: {ZG3_PATCH, number} // Select fixed patch number.
+#define ZG3_RELSEL 51 //Command: {ZG3_RELSEL, number, bank_size} // Select patch in bank
+#define ZG3_BANK_UP 52 //Command: {ZG3_BANK_UP, bank_size}
+#define ZG3_BANK_DOWN 53 //Command: {ZG3_BANK_DOWN, bank_size}
+#define ZG3_FX_TOGGLE 54 //Command: {ZG3_FX_TOGGLE, 1} -> Where "1" can be 1 to 6 for the FX number
+String ZG3_patch_name = "                "; // Patchname displayed in the main display
 
 //Toggle types
 #define MOMENTARY 0

@@ -41,6 +41,10 @@ LiquidCrystal_I2C lcd[NUMBER_OF_DISPLAYS] = {
 unsigned long messageTimer = 0;
 uint8_t update_lcd = 0; // True if individual display needs updating
 bool update_main_lcd = false; // True if main display needs updating
+#define OFF 0
+#define FULL 1
+#define PARAMETERS 2
+bool update_parameter_lcds = OFF; // True if main display needs updating
 
 String Current_patch_number_string = "";
 String Current_patch_name = "                "; // Patchname displayed in the main display
@@ -55,36 +59,41 @@ void setup_LCD_control()
 
   // Switch on the backlight
   Main_lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-  Main_lcd.setBacklight(HIGH);
-  Main_lcd.home(); // go home
-  Main_lcd.print("V-controller v2");  // Show startup message
-  show_status_message("  by SixEight");  //Please give me the credits :-)
+  Main_lcd.setBacklight(LOW);
 
   for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
     lcd[i].begin (16, 2);
     lcd[i].setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-    lcd[i].setBacklight(HIGH); //switch on the backlight
+    lcd[i].setBacklight(LOW); //switch off the backlight
   }
 }
 
 void main_LCD_control()
 {
   // Display mode, unless a status message is being displayed
-  /*if (update_lcd > 0) {
+  if (update_lcd > 0) {
     update_LCDs(update_lcd - 1); // Updates the individual LCDs
     update_lcd = 0;
-  }*/
+  }
 
-  if  ((update_main_lcd == true) && (millis() - messageTimer >= MESSAGE_TIMER_LENGTH)) {
-    update_main_lcd = false;
+  if (VController_on) {
+    if  ((update_main_lcd == true) && (millis() - messageTimer >= MESSAGE_TIMER_LENGTH)) {
+      update_main_lcd = false;
 
-    Main_lcd.home();
-    Main_lcd.print(Page[Current_page].Title);
-    set_patch_number_and_name();
-    Main_lcd.setCursor (0, 0);
-    Main_lcd.print(Current_patch_number_string);
-    Main_lcd.setCursor (0, 1);       // go to start of 2nd line
-    Main_lcd.print(Current_patch_name); // Show the current patchname
+      Main_lcd.home();
+      Main_lcd.print(Page[Current_page].Title);
+      set_patch_number_and_name();
+      Main_lcd.setCursor (0, 0);
+      Main_lcd.print(Current_patch_number_string);
+      Main_lcd.setCursor (0, 1);       // go to start of 2nd line
+      Main_lcd.print(Current_patch_name); // Show the current patchname
+    }
+    
+    if (update_parameter_lcds != OFF) {
+      if (update_parameter_lcds == FULL) load_current_page(true); //Re-read the page - but just the parameters
+      if (update_parameter_lcds == PARAMETERS) load_current_page(false); //Re-read the page - but just the parameters
+      update_parameter_lcds = OFF;
+    }
   }
 }
 
@@ -92,7 +101,7 @@ void update_LCDs(uint8_t number) {
 
   //Determine what to display from the Switch type
   DEBUGMSG("Update display no:" + String(number));
-  
+
   switch (SP[number].Type) {
     case GP10_PATCH:
     case GP10_RELSEL:
@@ -209,6 +218,34 @@ void update_LCDs(uint8_t number) {
         centre_print_label(number);
       }
       break;
+    case ZG3_PATCH:
+    case ZG3_RELSEL:
+      // What to show on the individual display
+      if (number < NUMBER_OF_DISPLAYS) {
+        Display_number_string[number] = ""; //Clear the display_number_string
+        ZG3_number_format(SP[number].PP_number, Display_number_string[number]);
+        lcd[number].setCursor (0, 0);
+        lcd[number].print("       " + Display_number_string[number] + "      ");
+        //lcd[number].print(SP[number].Label); // Show the current patchname
+        centre_print_label(number);
+      }
+
+      // What to show on the main display
+      /*if ((Current_device == GP10) && (GP10_patch_number == SP[number].PP_number)) { //Show this patchnumber on the main diplay
+        display_GP10_patch_number_string();
+        set_current_patch_name(number);
+        update_main_lcd = true;
+      }*/
+      break;
+    case ZG3_FX_TOGGLE:
+      // What to show on the individual display
+      if (number < NUMBER_OF_DISPLAYS) {
+        lcd[number].setCursor (0, 0);
+        lcd[number].print("    [ FX" + String(SP[number].PP_number) + " ]    ");
+        //lcd[number].print(SP[number].Label); // Show the current patchname
+        centre_print_label(number);
+      }
+      break;
     case GP10_BANK_UP:
     case GP10_BANK_DOWN:
     case GR55_BANK_UP:
@@ -239,12 +276,14 @@ void update_LCDs(uint8_t number) {
 
 void show_status_message(String message)
 {
-  Main_lcd.home();
-  Main_lcd.setCursor (0, 1);       // go to start of 2nd line
-  Main_lcd.print("                "); //Clear the line first
-  Main_lcd.setCursor (0, 1);       // go to start of 2nd line
-  Main_lcd.print(message);
-  messageTimer = millis();
+  if (VController_on) {
+    Main_lcd.home();
+    Main_lcd.setCursor (0, 1);       // go to start of 2nd line
+    Main_lcd.print("                "); //Clear the line first
+    Main_lcd.setCursor (0, 1);       // go to start of 2nd line
+    Main_lcd.print(message);
+    messageTimer = millis();
+  }
 }
 
 void clear_label(uint8_t no) {
@@ -260,7 +299,7 @@ void set_label(uint8_t no, String &msg) {
   for (uint8_t i = 0; i < msg_length; i++) {
     SP[no].Label[i] = msg[i];
   }
-  update_lcd = no;
+  //update_lcd = no;
 }
 
 void set_current_patch_name(uint8_t no) { //Copies the patchname from the SP array to the main display
@@ -410,6 +449,11 @@ void VG99_number_format(uint16_t number, String &Output) {
   Output = Output + String((number + 1) / 100) + String(((number + 1) / 10) % 10) + String((number + 1) % 10);
 }
 
+void ZG3_number_format(uint8_t number, String &Output) {
+  char BankChar = 65 + (number / 10);
+  Output = Output + BankChar + String(number % 10);
+}
+
 void centre_print_label(uint8_t s) {
   // Find out the number of spaces at the end of the label
   uint8_t endpoint = 15; // Current label size
@@ -420,4 +464,19 @@ void centre_print_label(uint8_t s) {
   lcd[s].print("        ");
   lcd[s].setCursor ((15 - endpoint) / 2, 1);       // go to start of 2nd line
   lcd[s].print(SP[s].Label);
+}
+
+void LCD_backlight_on() {
+  for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
+    lcd[i].setBacklight(HIGH); //switch on the backlight
+  }
+  Main_lcd.setBacklight(HIGH);
+}
+
+void LCD_backlight_off() {
+  for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
+    lcd[i].setBacklight(LOW); //switch on the backlight
+  }
+  Main_lcd.setBacklight(LOW);
+  Main_lcd.clear(); // Clear main display
 }

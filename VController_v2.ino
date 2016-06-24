@@ -3,6 +3,7 @@
 
 void setup() {
   setup_LED_control(); //Should be first, to reduce startup flash of LEDs
+  setup_eeprom();
   setup_LCD_control();
   setup_debug();
   setup_switch_check();

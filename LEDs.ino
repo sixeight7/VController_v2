@@ -25,19 +25,14 @@ struct colour {
 // The neopixels are very bright. I find setting them to 10 is just fine for an indicator light.
 
 #define GP10_PATCH_COLOUR 4 //Yellow
-//#define GP10_OFF_COLOUR 14
 #define GR55_PATCH_COLOUR 3 //Blue
-//#define GR55_OFF_COLOUR 13
 #define VG99_PATCH_COLOUR 2 //Red
-//#define VG99_OFF_COLOUR 12
+#define ZG3_PATCH_COLOUR 1 //Green
 #define GP10_STOMP_COLOUR 4 //Yellow
-//#define GP10_STOMP_COLOUR_OFF 14 //Green dimmed
 #define GR55_STOMP_COLOUR 3 //Blue
-//#define GR55_STOMP_COLOUR_OFF 13 //Blue dimmed
 #define VG99_STOMP_COLOUR 2 //Red
-//#define VG99_STOMP_COLOUR_OFF 12 //Red dimmed
+#define ZG3_STOMP_COLOUR 1 //Green
 #define GLOBAL_STOMP_COLOUR 2 //White
-//#define GLOBAL_STOMP_COLOUR_OFF 12 //White dimmed
 #define BPM_COLOUR_ON 2 // Red flasing LED
 #define BPM_COLOUR_OFF 0
 
@@ -226,6 +221,33 @@ void update_LEDs() {
           else show_colour(s, SP[s].Colour + 10);
         }
         break;
+      case ZG3_PATCH:
+        if (ZG3_patch_number == SP[s].PP_number) {
+          if (ZG3_on) show_colour(s, SP[s].Colour);
+          else show_colour(s, SP[s].Colour + 10); // Show off colour
+        }
+        else show_colour(s, 0);
+        break;
+      case ZG3_RELSEL:
+        if (ZG3_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
+        else {
+          if (ZG3_patch_number == SP[s].PP_number) {
+            if (ZG3_on) show_colour(s, SP[s].Colour);
+            else show_colour(s, SP[s].Colour + 10); // Show off colour
+          }
+          else show_colour(s, 0);
+        }
+        break;
+      case ZG3_BANK_UP:
+      case ZG3_BANK_DOWN:
+        if (SP[s].Pressed) show_colour(s, SP[s].Colour);
+        else show_colour(s, ZG3_PATCH_COLOUR + 10);
+        break;
+      case ZG3_FX_TOGGLE:
+        if (SP[s].State == 2) show_colour(s, SP[s].Colour);  // LED on
+        if (SP[s].State == 1) show_colour(s, SP[s].Colour + 10); // LED dimmed
+        if (SP[s].State == 0) show_colour(s, 0); // LED off
+        break;
       case COMBI_BANK_UP:
       case COMBI_BANK_DOWN:
         if (SP[s].Pressed) {
@@ -245,6 +267,9 @@ void update_LEDs() {
       case SELECT_PAGE:
         if (SP[s].Pressed) show_colour(s, GLOBAL_STOMP_COLOUR);
         else show_colour(s, 0);
+        break;
+      case STANDBYE:
+        show_colour(s, 11);
         break;
       default:
         show_colour(s, 0); // Show nothing with undefined LED

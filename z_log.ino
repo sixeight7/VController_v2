@@ -13,4 +13,8 @@
 01-01-2016 Parameter and assign mode for VG-99
 02-01-2016 Added FC300 CTL1-8 for VG-99
 17-01-2016 Worked on individual display messages
+2?-03-2016 Updated firmware to work with the new hardware
+30-03-2016 Simplified updating individual displays
+02-04-2016 Added EEPROM.ino with global read/store and on/standbye mode for the VController
+13-06-2016 Started adding page for Zoom G3
 */

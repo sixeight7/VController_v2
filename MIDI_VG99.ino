@@ -78,7 +78,7 @@ void check_SYSEX_in_VG99(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 16; count++) {
             SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          update_lcd = current_parameter + 1;
+          //update_lcd = current_parameter + 1;
           if (SP[current_parameter].PP_number == VG99_patch_number) {
             VG99_patch_name = SP[current_parameter].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
@@ -139,7 +139,7 @@ void check_SYSEX_in_VG99fc(const unsigned char* sxdata, short unsigned int sxlen
 void check_PC_in_VG99(byte channel, byte program) { // Check incoming PC messages from VG99. Called from MIDI:OnProgramChange
 
   // Check the source by checking the channel
-  if (channel == VG99_MIDI_channel) { // VG99 outputs a program change
+  if ((Current_MIDI_port == VG99_MIDI_port) && (channel == VG99_MIDI_channel)) { // VG99 outputs a program change
     uint16_t new_patch = (VG99_CC01 * 100) + program;
     if (VG99_patch_number != new_patch) {
       VG99_patch_number = new_patch;
@@ -162,7 +162,7 @@ void VG99_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     //VG99_fix_reverse_pedals();
     request_VG99(VG99_REQUEST_PATCH_NUMBER);
     VG99_do_after_patch_selection();
-    load_current_page();
+    load_current_page(true);
   }
 }
 
@@ -290,6 +290,7 @@ void VG99_do_after_patch_selection() {
   Current_device = VG99;
   update_LEDS = true;
   update_main_lcd = true;
+  update_parameter_lcds = PARAMETERS;
   VG99_request_guitar_switch_states();
   //EEPROM.write(EEPROM_VG99_PATCH_MSB, (VG99_patch_number / 256));
   //EEPROM.write(EEPROM_VG99_PATCH_LSB, (VG99_patch_number % 256));
@@ -339,7 +340,7 @@ void VG99_bank_updown(bool updown, uint16_t bank_size) {
 
   if (VG99_bank_number == bank_number) VG99_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(); //Re-read the patchnames for this bank
+  load_current_page(true); //Re-read the patchnames for this bank
 }
 
 void VG99_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -350,7 +351,7 @@ void VG99_page_check() { // Checks if the current patch is on the page and will 
       VG99_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page();
+  if (!onpage) load_current_page(true);
 }
 
 // ** US-20 simulation
@@ -433,7 +434,7 @@ void VG99_mute_now() {
 // Procedures for the VG99_PARAMETER and VG99_ASSIGN commands
 
 // Procedures for the VG99_PARAMETER:
-// 1. Load in SP array - in load_current_page()
+// 1. Load in SP array - in load_current_page(true)
 // 2. Request parameter state - in Request_current_parameter()
 // 3. Read parameter state - VG99_read_parameter() below
 // 4. Press switch - VG99_parameter_press() below - also calls VG99_check_update_label()
@@ -755,7 +756,7 @@ void VG99_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
   VG99_check_update_label(Sw, value);
   show_status_message(SP[Sw].Label);
 
-  load_current_page(); // To update the other switch states, we re-load the current page
+  load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void VG99_parameter_release(uint8_t Sw, uint8_t Cmd, int8_t number) {
@@ -767,7 +768,7 @@ void VG99_parameter_release(uint8_t Sw, uint8_t Cmd, int8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_VG99(0x60000000 + VG99_parameters[part][index].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(); // To update the other switch states, we re-load the current page
+    load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -827,7 +828,7 @@ void VG99_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current VG99
   }
   //Copy it to the display name:
   set_label(current_parameter, msg);
-  update_lcd = current_parameter + 1;
+  //update_lcd = current_parameter + 1;
 }
 
 void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -846,7 +847,7 @@ void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      update_lcd = current_parameter + 1;
+      //update_lcd = current_parameter + 1;
     }
   }
 }
@@ -889,7 +890,7 @@ void VG99_assign_press(uint8_t Sw) { // Switch set to VG99_ASSIGN is pressed
   }
   show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
 }
 
 void VG99_assign_release(uint8_t Sw) { // Switch set to VG99_ASSIGN is released
@@ -904,7 +905,7 @@ void VG99_assign_release(uint8_t Sw) { // Switch set to VG99_ASSIGN is released
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
   }
 }
 
