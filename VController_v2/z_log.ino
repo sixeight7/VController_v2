@@ -17,5 +17,7 @@
 30-03-2016 Simplified updating individual displays
 02-04-2016 Added EEPROM.ino with global read/store and on/standbye mode for the VController
 13-06-2016 Started adding page for Zoom G3
+11-07-2016 Changed set_patch_number_and_name() so the main display can deal with the Zoom G3 and more devices as well
+12-07-2016 Added virtual LEDs (LED state in display)
 */
 

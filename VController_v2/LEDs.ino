@@ -291,7 +291,7 @@ void show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specif
       LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
       Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
     }
-    else { // UPdate flashing LED
+    else { // Update flashing LED
       if (LED_flashing_state_on == true) {
         // Turn the LED on
         LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));

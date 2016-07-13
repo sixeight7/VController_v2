@@ -233,7 +233,7 @@ void reset_all_switch_states() {
 void select_page(uint8_t new_page) {
   previous_page = Current_page; // Store the mode we come from...
   Current_page = new_page;
-  //EEPROM.write(EEPROM_mode, Current_page);
+  //EEPROM.write(EEPROM_mode, Current_page); 
   load_current_page(true);
 }
 

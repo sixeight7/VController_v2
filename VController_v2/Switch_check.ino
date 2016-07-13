@@ -11,7 +11,7 @@
 unsigned long Switch_update_timer = 0;
 unsigned long Long_press_timer = 0;
 unsigned long Extra_long_press_timer = 0;
-unsigned long Expr_pedal_timer = 0;
+unsigned long Expr_pedal_timer = 0; 
 
 // ***************************** Hardware settings *****************************
 // Define pin numbers

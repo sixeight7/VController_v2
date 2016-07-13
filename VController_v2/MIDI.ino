@@ -3,7 +3,7 @@
 // Specific messages are listed under MIDI_GP10, MIDI_GR55 and MIDI_VG99
 
 // Change buffersize of usbMIDI:
-// Edit /Applications/Arduino.app/Contents/Resources/Java/hardware/teensy/avr/cores/teensy3/usb_midi.h in Teksteditor and change USB_MIDI_SYSEX_MAX 127
+// Edit on Mac: /Applications/Arduino.app/Contents/Resources/Java/hardware/teensy/avr/cores/teensy3/usb_midi.h in Teksteditor and change USB_MIDI_SYSEX_MAX 127
 
 #include <MIDI.h>
 

@@ -724,7 +724,7 @@ void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   }
 }
 
-bool GR55_target_lookup(uint16_t target) {
+bool GR55_target_lookup(uint16_t target) {  // Finds the target and its address in the GR55_parameters table
 
   // Lookup in GR55_parameter array
   bool found = false;

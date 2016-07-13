@@ -678,7 +678,7 @@ void GP10_assign_request() { //Request the current assign
   }
 }
 
-bool GP10_target_lookup(uint16_t target) {
+bool GP10_target_lookup(uint16_t target) { // Finds the target and its address in the GP10_parameters table
 
   // Lookup in GP10_parameter array
   bool found = false;

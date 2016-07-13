@@ -44,7 +44,7 @@ Hardware;
 - Extra EEPROM Flash memory: 24LC512
 
 Software features:
-- Patch and parameter control for Boss GP-10, Roland GR-55 and Roland VG-99
+- Patch and parameter control for Boss GP-10, Roland GR-55, Roland VG-99 and Zoom G3
 - Patchnames are read from devices
 - Parameter states and assigns are read from devices
 - Programmable pages of switches. There can be programmed on the Config page

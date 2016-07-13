@@ -54,42 +54,6 @@ uint8_t Current_device = 0;                     // The device from which the pat
 
 String Display_number_string[NUMBER_OF_DISPLAYS]; // Placeholder for patchnumbers on display
 
-// A virtual LED is a user defined character on the display
-// The state of these LEDs are set in the LED section.
-// It is updated from there.
-// Custom characters for virtual LEDs
-uint8_t Display_LED[NUMBER_OF_SWITCHES]; // For showing state of the LEDs on the display. Can have state on (1), off (0) and dimmed (2)
-byte vLED_on[8] = {
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b11111,
-  0b00000,
-  0b00000
-};
-byte vLED_off[8] = {
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000
-};
-byte vLED_dimmed[8] = {
-  0b00000,
-  0b00000,
-  0b00100,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000,
-  0b00000
-};
-
 void setup_LCD_control()
 {
   Main_lcd.begin (16, 2); //  <<----- My LCD was 16x2
@@ -674,6 +638,42 @@ void LCD_backlight_off() { // Will switch all backlights off
 }
 
 //*** Virtual LEDs
+// A virtual LED is user defined character 0 on the display. The virtaul LED is changed by changing the user defined character.
+// To have one or more virtual LEDS in a display message, user defined character 0 has to be included on the position where the LEDs have to appear
+// The state of these virtual LEDs is set in the LEDs section.
+
+uint8_t Display_LED[NUMBER_OF_SWITCHES]; // For showing state of the LEDs on the display. Can have state on (1), off (0) and dimmed (2)
+// Custom characters for virtual LEDs
+byte vLED_on[8] = { // The character for LED on
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b00000,
+  0b00000,
+  0b00000
+};
+byte vLED_off[8] = { // The character for LED off
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+byte vLED_dimmed[8] = { // The character for LED dimmed
+  0b11111,
+  0b10001,
+  0b10001,
+  0b10001,
+  0b11111,
+  0b00000,
+  0b00000,
+  0b00000
+};
 
 void Init_virtual_LED(uint8_t number) { // Initialize virtual LED
   Display_LED[number] = 0;
@@ -692,7 +692,7 @@ void Set_virtual_LED(uint8_t number, uint8_t state) { // Will set the state of a
   }
 }
 
-void Set_virtual_LED_colour(uint8_t number, uint8_t colour) {
+void Set_virtual_LED_colour(uint8_t number, uint8_t colour) { // Called from LEDs.ino-show_colour()
   if ((colour == 0) | (colour > 9)) Set_virtual_LED(number, 0); //Virtual LED off
   else Set_virtual_LED(number, 1); //Virtual LED on
   

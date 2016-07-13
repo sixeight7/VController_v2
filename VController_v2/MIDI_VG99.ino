@@ -1027,7 +1027,7 @@ void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   }
 }
 
-bool VG99_target_lookup(uint16_t target) {
+bool VG99_target_lookup(uint16_t target) {  // Finds the target and its address in the VG99_parameters table
 
   // Lookup in VG99_parameter array
   uint8_t part = (target / 0x1000); // As the array is divided in addresses by 1000, it is easy to find the right part

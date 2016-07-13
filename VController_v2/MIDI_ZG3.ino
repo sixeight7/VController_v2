@@ -274,7 +274,7 @@ void ZG3_FX_set_type_and_state(uint8_t Sw) {
 
 #define ZG3_NUMBER_OF_FX 120
 
-  const PROGMEM ZG3_FX_type_struct ZG3_FX_types[ZG3_NUMBER_OF_FX] = {
+  const PROGMEM ZG3_FX_type_struct ZG3_FX_types[ZG3_NUMBER_OF_FX] = { // Table with the name and colour for every effect of the Zoom G3
     {"M-FILTER", FX_FILTER_COLOUR}, // 01
     {"THE VIBE", FX_MODULATE_COLOUR}, // 02
     {"Z-ORGAN", FX_MODULATE_COLOUR}, // 03

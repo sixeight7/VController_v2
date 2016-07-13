@@ -264,6 +264,7 @@ void Request_current_switch() { //Will request the next assign - the assigns are
   }
 }
 
+// Sysex watchdog will repeat the request in case the answer does not arrive in time.
 void Start_sysex_watchdog() {
   SysexWatchdog = millis() + SYSEX_WATCHDOG_LENGTH;
   Sysex_watchdog_running = true;
