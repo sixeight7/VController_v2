@@ -124,3 +124,4 @@ void read_memory(uint8_t number) {
   GR55_patch_number = EEPROM.read(location + 1) + (GR55_patchnumber_bit1 << 8) + (GR55_patchnumber_bit2 << 9);
   GP10_patch_number = EEPROM.read(location);
 }
+

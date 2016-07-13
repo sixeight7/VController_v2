@@ -4,7 +4,7 @@ uint8_t GR55_MIDI_port = 0;
 
 //Sysex messages for Roland GR-55
 #define GR55_REQUEST_MODE 0x18000000, 1 //Is 00 in guitar mode, 01 in bass mode (Gumtown in town :-)
-#define GR55_REQUEST_PATCHNAME 0x18000001, 16 //Request 17 bytes for current patch name - GR55 send one dummy byte before the patchname data
+#define GR55_REQUEST_CURRENT_PATCH_NAME 0x18000001, 16 //Request 16 bytes for current patch name
 #define GR55_REQUEST_PATCH_NUMBER 0x01000000, 2 //Request current patch number
 #define GR55_CTL_LED_ON 0x18000011, 0x01
 #define GR55_CTL_LED_OFF 0x18000011, 0x00
@@ -22,7 +22,7 @@ unsigned long GR55sysexDelay = 0;
 bool GR55_request_onoff = false;
 bool GR55_read_assign_target = false;
 
-// ********************************* Section 2: GR55 comon MIDI in functions ********************************************
+// ********************************* Section 2: GR55 common MIDI in functions ********************************************
 
 void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlength) {  // Check incoming sysex messages from GR55. Called from MIDI:OnSysEx/OnSerialSysEx
 
@@ -41,33 +41,42 @@ void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlengt
     }
 
     // Check if it is the current parameter
-    if (address == SP[current_parameter].Address) {
-      switch (SP[current_parameter].Type) {
+    if (address == SP[Current_switch].Address) {
+      switch (SP[Current_switch].Type) {
         case GR55_PATCH:
         case GR55_RELSEL:
           for (uint8_t count = 0; count < 16; count++) {
-            SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
+            SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = current_parameter + 1;
-          if (SP[current_parameter].PP_number == GR55_patch_number) {
-            GR55_patch_name = SP[current_parameter].Label; // Load patchname when it is read
+          //update_lcd = Current_switch + 1;
+          if (SP[Current_switch].PP_number == GR55_patch_number) {
+            GR55_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
-          DEBUGMSG(SP[current_parameter].Label);
-          Request_next_parameter();
+          DEBUGMSG(SP[Current_switch].Label);
+          Request_next_switch();
           break;
         case GR55_PARAMETER:
           GR55_read_parameter(sxdata[11], sxdata[12]);
-          Request_next_parameter();
+          Request_next_switch();
           break;
         case GR55_ASSIGN:
           if (GR55_read_assign_target == false) GR55_read_current_assign(address, sxdata, sxlength);
           else {
             GR55_read_parameter(sxdata[11], sxdata[12]); //Reading the assign target is equal to readig the parameter
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
       }
+    }
+    
+    // Check if it is the patch name (address: 0x18, 0x00, 0x00, 0x01)
+    if ((sxdata[6] == 0x12) && (address == 0x18000001) ) {
+      GR55_patch_name = "";
+      for (uint8_t count = 11; count < 27; count++) {
+        GR55_patch_name = GR55_patch_name + static_cast<char>(sxdata[count]); //Add ascii character to Patch Name String
+      }
+      update_main_lcd = true;
     }
 
     // Check if it is the guitar on/off states
@@ -87,6 +96,7 @@ void check_PC_in_GR55(byte channel, byte program) { // Check incoming PC message
     if (GR55_patch_number != new_patch) {
       GR55_patch_number = new_patch;
       if (GR55_patch_number > 2047) GR55_patch_number = GR55_patch_number - 1751; // There is a gap of 1752 patches in the numbering system of the GR-55. This will close it.
+      request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch  
       GR55_page_check();
       GR55_do_after_patch_selection();
     }
@@ -103,12 +113,13 @@ void GR55_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     GR55_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
     DEBUGMSG("GR-55 detected on MIDI port" + String(Current_MIDI_port));
     request_GR55(GR55_REQUEST_PATCH_NUMBER);
-    GR55_do_after_patch_selection();
+    request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch  
+      GR55_do_after_patch_selection();
     load_current_page(true);
   }
 }
 
-// ********************************* Section 3: GR55 comon MIDI out functions ********************************************
+// ********************************* Section 3: GR55 common MIDI out functions ********************************************
 
 void GR55_check_sysex_delay() { // Will delay if last message was within GR55_SYSEX_DELAY_LENGTH (10 ms)
   while (millis() - GR55sysexDelay <= GR55_SYSEX_DELAY_LENGTH) {}
@@ -198,7 +209,7 @@ void GR55_do_after_patch_selection() {
   Current_device = GR55;
   update_LEDS = true;
   update_main_lcd = true;
-  update_parameter_lcds = PARAMETERS;
+  update_switch_lcds = PARAMETERS;
   GR55_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GR55_PATCH_MSB, (GR55_patch_number / 256));
   //EEPROM.write(EEPROM_GR55_PATCH_LSB, (GR55_patch_number % 256));
@@ -357,7 +368,7 @@ void GR55_mute_now() { // Needed a second version, because the GR55 must always 
 
 // Procedures for the GR55_PARAMETER:
 // 1. Load in SP array - in load_current_page(true)
-// 2. Request parameter state - in Request_current_parameter()
+// 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - GR55_read_parameter() below
 // 4. Press switch - GR55_parameter_press() below - also calls GR55_check_update_label()
 // 5. Release switch - GR55_parameter_release() below - also calls GR55_check_update_label()
@@ -499,34 +510,34 @@ void GR55_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
 }
 
 void GR55_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GR55 parameter
-  SP[current_parameter].Target_byte1 = byte1;
-  SP[current_parameter].Target_byte2 = byte2;
+  SP[Current_switch].Target_byte1 = byte1;
+  SP[Current_switch].Target_byte2 = byte2;
 
-  uint8_t index = SP[current_parameter].PP_number; // Read the parameter number (index to GR55-parameter array)
+  uint8_t index = SP[Current_switch].PP_number; // Read the parameter number (index to GR55-parameter array)
 
   // Set the status
-  SP[current_parameter].State = 0;
-  if (SP[current_parameter].Type == GR55_PARAMETER) {
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value5) SP[current_parameter].State = 5;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value4) SP[current_parameter].State = 4;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value3) SP[current_parameter].State = 3;
+  SP[Current_switch].State = 0;
+  if (SP[Current_switch].Type == GR55_PARAMETER) {
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value5) SP[Current_switch].State = 5;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value4) SP[Current_switch].State = 4;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value3) SP[Current_switch].State = 3;
     if (!GR55_parameters[index].Reversed) { // If not reversed - read state the normal way around
-      if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value2) SP[current_parameter].State = 2;
-      if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value1) SP[current_parameter].State = 1;
+      if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value2) SP[Current_switch].State = 2;
+      if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value1) SP[Current_switch].State = 1;
     }
     else { // If reversed - reverse value 1 and 2
-      if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value1) SP[current_parameter].State = 2;
-      if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value2) SP[current_parameter].State = 1;
+      if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value1) SP[Current_switch].State = 2;
+      if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value2) SP[Current_switch].State = 1;
     }
   }
   else { // It must be a GR55_ASSIGN
     if (!GR55_parameters[index].Reversed) { // If not reversed - read state the normal way around
-      if (byte1 == SP[current_parameter].Assign_min) SP[current_parameter].State = 2;
-      if (byte1 == SP[current_parameter].Assign_max) SP[current_parameter].State = 1;
+      if (byte1 == SP[Current_switch].Assign_min) SP[Current_switch].State = 2;
+      if (byte1 == SP[Current_switch].Assign_max) SP[Current_switch].State = 1;
     }
     else { // If reversed - reverse assign_min and assign_max
-      if (byte1 == SP[current_parameter].Assign_max) SP[current_parameter].State = 2;
-      if (byte1 == SP[current_parameter].Assign_min) SP[current_parameter].State = 1;
+      if (byte1 == SP[Current_switch].Assign_max) SP[Current_switch].State = 2;
+      if (byte1 == SP[Current_switch].Assign_min) SP[Current_switch].State = 1;
     }
   }
 
@@ -536,19 +547,19 @@ void GR55_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GR55
   //Check for special colours:
   switch (my_colour) {
     case GR55_MFX_COLOUR:
-      SP[current_parameter].Colour = GR55_MFX_colours[byte2]; //MFX type read in byte2
+      SP[Current_switch].Colour = GR55_MFX_colours[byte2]; //MFX type read in byte2
       break;
     case GR55_MFX_TYPE_COLOUR:
-      SP[current_parameter].Colour = GR55_MFX_colours[byte1]; //MFX type read in byte1
+      SP[Current_switch].Colour = GR55_MFX_colours[byte1]; //MFX type read in byte1
       break;
     case GR55_MOD_COLOUR:
-      SP[current_parameter].Colour = GR55_MOD_colours[byte2]; //MOD type read in byte2
+      SP[Current_switch].Colour = GR55_MOD_colours[byte2]; //MOD type read in byte2
       break;
     case GR55_MOD_TYPE_COLOUR:
-      SP[current_parameter].Colour = GR55_MOD_colours[byte1]; //MOD type read in byte1
+      SP[Current_switch].Colour = GR55_MOD_colours[byte1]; //MOD type read in byte1
       break;
     default:
-      SP[current_parameter].Colour =  my_colour;
+      SP[Current_switch].Colour =  my_colour;
       break;
   }
 
@@ -563,8 +574,8 @@ void GR55_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GR55
     msg = msg + ":" + type_name;
   }
   //Copy it to the display name:
-  set_label(current_parameter, msg);
-  //update_lcd = current_parameter + 1;
+  set_label(Current_switch, msg);
+  //update_lcd = Current_switch + 1;
 }
 
 void GR55_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -579,7 +590,7 @@ void GR55_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      //update_lcd = current_parameter + 1;
+      //update_lcd = Current_switch + 1;
     }
   }
 }
@@ -635,14 +646,14 @@ void GR55_assign_load(uint8_t sw, uint8_t assign_number, uint8_t cc_number) { //
 }
 
 void GR55_request_current_assign() {
-  uint8_t index = SP[current_parameter].Assign_number - 1;  //index should be between 0 and 7
-  SP[current_parameter].Address = GR55_assign_address[index];
+  uint8_t index = SP[Current_switch].Assign_number - 1;  //index should be between 0 and 7
+  SP[Current_switch].Address = GR55_assign_address[index];
   if (index < GR55_NUMBER_OF_ASSIGNS) {
     DEBUGMSG("Request assign" + String(index + 1));
     GR55_read_assign_target = false;
-    request_GR55(SP[current_parameter].Address, 12);  //Request 12 bytes for the GR55 assign
+    request_GR55(SP[Current_switch].Address, 12);  //Request 12 bytes for the GR55 assign
   }
-  else Request_next_parameter(); // Wrong assign number given in Config - skip it
+  else Request_next_switch(); // Wrong assign number given in Config - skip it
 }
 
 void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, short unsigned int sxlength) {
@@ -655,7 +666,7 @@ void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   uint8_t assign_source = sxdata[21];
   uint8_t assign_latch = sxdata[22];
 
-  uint8_t my_trigger = SP[current_parameter].Trigger;
+  uint8_t my_trigger = SP[Current_switch].Trigger;
   if ((my_trigger >= 1) && (my_trigger <= 31)) my_trigger = my_trigger + 8; // Trigger is cc01 - cc31
   if ((my_trigger >= 64) && (my_trigger <= 95)) my_trigger = my_trigger - 24; // Trigger is cc64 - cc95
 
@@ -670,46 +681,46 @@ void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   DEBUGMSG("GR-55 Assign_trigger-check:" + String(my_trigger) + "==" + String(assign_source));
 
   if (assign_on) {
-    SP[current_parameter].Assign_on = true; // Switch the pedal off
-    SP[current_parameter].Latch = assign_latch;
+    SP[Current_switch].Assign_on = true; // Switch the pedal off
+    SP[Current_switch].Latch = assign_latch;
 
     // Allow for GR-55 assign min and max swap. Is neccesary, because the GR-55 will not save a parameter in the on-state, unless you swap the assign min and max values
     if (assign_target_max > assign_target_min) {
       // Store values the normal way around
-      SP[current_parameter].Assign_max = assign_target_max;
-      SP[current_parameter].Assign_min = assign_target_min;
+      SP[Current_switch].Assign_max = assign_target_max;
+      SP[Current_switch].Assign_min = assign_target_min;
     }
     else {
       // Reverse the values
-      SP[current_parameter].Assign_max = assign_target_min;
-      SP[current_parameter].Assign_min = assign_target_max;
+      SP[Current_switch].Assign_max = assign_target_min;
+      SP[Current_switch].Assign_min = assign_target_max;
     }
 
     // Request the target
     found = GR55_target_lookup(assign_target); // Lookup the address of the target in the GR55_Parameters array
-    DEBUGMSG("Request target of assign" + String(SP[current_parameter].Assign_number) + ":" + String(SP[current_parameter].Address, HEX));
+    DEBUGMSG("Request target of assign" + String(SP[Current_switch].Assign_number) + ":" + String(SP[Current_switch].Address, HEX));
     if (found) {
       GR55_read_assign_target = true;
-      request_GR55((SP[current_parameter].Address), 2);
+      request_GR55((SP[Current_switch].Address), 2);
     }
     else {
-      SP[current_parameter].PP_number = NOT_FOUND;
-      SP[current_parameter].Colour = GR55_STOMP_COLOUR;
+      SP[Current_switch].PP_number = NOT_FOUND;
+      SP[Current_switch].Colour = GR55_STOMP_COLOUR;
       // Set the Label
-      msg = "CC#" + String(SP[current_parameter].Trigger) + " (ASGN" + String(SP[current_parameter].Assign_number) + ")";
-      set_label(current_parameter, msg);
-      Request_next_parameter();
+      msg = "CC#" + String(SP[Current_switch].Trigger) + " (ASGN" + String(SP[Current_switch].Assign_number) + ")";
+      set_label(Current_switch, msg);
+      Request_next_switch();
     }
   }
   else { // Assign is off
-    SP[current_parameter].Assign_on = false; // Switch the pedal off
-    SP[current_parameter].State = 0; // Switch the stompbox off
-    SP[current_parameter].Latch = MOMENTARY; // Make it momentary
-    SP[current_parameter].Colour = GR55_STOMP_COLOUR; // Set the on colour to default
+    SP[Current_switch].Assign_on = false; // Switch the pedal off
+    SP[Current_switch].State = 0; // Switch the stompbox off
+    SP[Current_switch].Latch = MOMENTARY; // Make it momentary
+    SP[Current_switch].Colour = GR55_STOMP_COLOUR; // Set the on colour to default
     // Set the Label
-    msg = "CC#" + String(SP[current_parameter].Trigger);
-    set_label(current_parameter, msg);
-    Request_next_parameter();
+    msg = "CC#" + String(SP[Current_switch].Trigger);
+    set_label(Current_switch, msg);
+    Request_next_switch();
   }
 }
 
@@ -719,8 +730,8 @@ bool GR55_target_lookup(uint16_t target) {
   bool found = false;
   for (uint8_t i = 0; i < GR55_NUMBER_OF_PARAMETERS; i++) {
     if (target == GR55_parameters[i].Target) { //Check is we've found the right target
-      SP[current_parameter].PP_number = i; // Save the index number
-      SP[current_parameter].Address = GR55_parameters[i].Address;
+      SP[Current_switch].PP_number = i; // Save the index number
+      SP[Current_switch].Address = GR55_parameters[i].Address;
       found = true;
     }
   }

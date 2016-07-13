@@ -15,7 +15,7 @@ void setup_page()
 
 // Load a page from memory into the SP array
 void load_current_page(bool read_all) { // Read_all: true will reread all parameters, false will just read the parameters
-  update_parameter_lcds = false; //Parameter LCDs will also be read on a full read...
+  update_switch_lcds = OFF; //Switch LCDs are updated here as well
   for (uint8_t s = 0; s < NUMBER_OF_SWITCHES; s++) {
     SP[s].Type = Page[Current_page].Switch[s].Cmd[0].Type;
 
@@ -117,52 +117,51 @@ void load_current_page(bool read_all) { // Read_all: true will reread all parame
     if (SP[s].Read) clear_label(s); //Clear the label of this switch if it needs reading
   }
 
-  Request_first_parameter(); //Now start reading in the parameters from the devices
+  Request_first_switch(); //Now start reading in the parameters from the devices
 }
 
 // *************************************** MIDI parameter request ***************************************
 // This will read patch names and parameter names that are on the current page (SP array)
 
-void Request_first_parameter() {
-  current_parameter = 0; //After the name is read, the assigns can be read
+void Request_first_switch() {
+  Current_switch = 0; //After the name is read, the assigns can be read
   //update_LCDs(1); //update first LCD before moving on...
   read_attempt = 1;
   DEBUGMSG("Start reading switch parameters");
-  Request_current_parameter();
+  Request_current_switch();
 }
 
-void Request_next_parameter() {
-  update_LCDs(current_parameter); //update LCD before moving on...
-  current_parameter++;
+void Request_next_switch() {
+  update_LCDs(Current_switch); //update LCD before moving on...
+  Current_switch++;
   read_attempt = 1;
-  Request_current_parameter();
+  Request_current_switch();
 }
 
-void Request_current_parameter() { //Will request the next assign - the assigns are read one by one, otherwise the data will not arrive!
-  if (current_parameter < NUMBER_OF_SWITCHES) {
-    if (SP[current_parameter].Read) {
-      DEBUGMSG("Request parameter " + String(current_parameter));
-      //update_LCDs(current_parameter + 1); //update LCD before moving on...
-      switch (SP[current_parameter].Type) {
+void Request_current_switch() { //Will request the next assign - the assigns are read one by one, otherwise the data will not arrive!
+  if (Current_switch < NUMBER_OF_SWITCHES) {
+    if (SP[Current_switch].Read) {
+      DEBUGMSG("Request parameter " + String(Current_switch));
+      //update_LCDs(Current_switch + 1); //update LCD before moving on...
+      
+      switch (SP[Current_switch].Type) {
         case GP10_PATCH:
         case GP10_RELSEL:
           if (GP10_detected) {
-            request_GP10(SP[current_parameter].Address, 12);  //Request the 12 bytes of the GP10 Patch name
+            request_GP10(SP[Current_switch].Address, 12);  //Request the 12 bytes of the GP10 Patch name
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case GP10_PARAMETER:
           if (GP10_detected) {
-            request_GP10(SP[current_parameter].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
+            request_GP10(SP[Current_switch].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case GP10_ASSIGN:
@@ -176,34 +175,30 @@ void Request_current_parameter() { //Will request the next assign - the assigns 
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case GR55_PATCH:
         case GR55_RELSEL:
-          if ((GR55_detected) && (SP[current_parameter].PP_number < 297)) { // This is a user patch - we read these from memory
-            request_GR55(SP[current_parameter].Address, 16);  //Request the 16 bytes of the GR55 Patch name
+          if ((GR55_detected) && (SP[Current_switch].PP_number < 297)) { // This is a user patch - we read these from memory
+            request_GR55(SP[Current_switch].Address, 16);  //Request the 16 bytes of the GR55 Patch name
             Start_sysex_watchdog(); // Start the watchdog
           }
-          else if ((GR55_detected) && (SP[current_parameter].PP_number < (297 + GR55_NUMBER_OF_FACTORY_PATCHES))) { // Fixed patch - read from GR55_preset_patch_names array
-            GR55_read_preset_name(current_parameter, SP[current_parameter].PP_number);
-
-            Request_next_parameter();
+          else if ((GR55_detected) && (SP[Current_switch].PP_number < (297 + GR55_NUMBER_OF_FACTORY_PATCHES))) { // Fixed patch - read from GR55_preset_patch_names array
+            GR55_read_preset_name(Current_switch, SP[Current_switch].PP_number);
+            Request_next_switch();
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case GR55_PARAMETER:
           if (GR55_detected) {
-            request_GR55(SP[current_parameter].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
+            request_GR55(SP[Current_switch].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case GR55_ASSIGN:
@@ -212,29 +207,26 @@ void Request_current_parameter() { //Will request the next assign - the assigns 
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case VG99_PATCH:
         case VG99_RELSEL:
           if (VG99_detected) {
-            request_VG99(SP[current_parameter].Address, 16);  //Request the 16 bytes of the GR55 Patch name
+            request_VG99(SP[Current_switch].Address, 16);  //Request the 16 bytes of the GR55 Patch name
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case VG99_PARAMETER:
           if (VG99_detected) {
-            request_VG99(SP[current_parameter].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
+            request_VG99(SP[Current_switch].Address, 2);  //Request the 2 bytes of the GP10 Parameter setting
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case VG99_ASSIGN:
@@ -243,30 +235,28 @@ void Request_current_parameter() { //Will request the next assign - the assigns 
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case ZG3_PATCH:
         case ZG3_RELSEL:
           if (ZG3_detected) {
-            ZG3_request_patch(SP[current_parameter].PP_number);  //Request the 12 bytes of the GP10 Patch name
+            ZG3_request_patch(SP[Current_switch].PP_number);  //Request the 12 bytes of the GP10 Patch name
             Start_sysex_watchdog(); // Start the watchdog
           }
           else {
-
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
         case ZG3_FX_TOGGLE:
-        if (ZG3_detected) ZG3_FX_set_type_and_state(current_parameter);
-        Request_next_parameter();
-        break;
+          if (ZG3_detected) ZG3_FX_set_type_and_state(Current_switch);
+          Request_next_switch();
+          break;
         default:
-          Request_next_parameter();
+          Request_next_switch();
       }
     }
-    else Request_next_parameter();
+    else Request_next_switch();
   }
   else {
     Stop_sysex_watchdog(); // Stop the watchdog
@@ -289,8 +279,9 @@ void Check_sysex_watchdog() {
   if ((millis() > SysexWatchdog) && (Sysex_watchdog_running)) {
     DEBUGMSG("Sysex watchdog expired");
     read_attempt++;
-    if (read_attempt > SYSEX_NUMBER_OF_READ_ATTEMPS) Request_next_parameter();
-    else Request_current_parameter(); // Try reading the current parameter again
+    if (read_attempt > SYSEX_NUMBER_OF_READ_ATTEMPS) Request_next_switch();
+    else Request_current_switch(); // Try reading the current parameter again
   }
 }
+
 

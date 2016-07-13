@@ -1,4 +1,5 @@
 // Here we find the settings for all the devices
+#define NUMBER_OF_DEVICES 4
 #define GP10 1
 #define GR55 2
 #define VG99 3
@@ -114,3 +115,4 @@ uint16_t bpm=120;
 #define DOWN false
 
 #define NOT_FOUND 255 // Special state for SP[].PP_number in case an assign is not listed
+

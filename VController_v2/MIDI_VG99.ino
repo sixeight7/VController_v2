@@ -12,7 +12,7 @@
 //boolean VG99_FC300_mode = false; // If the FC300 is attached, patch names will be sent in FC300 SYSEX messages
 
 //Sysex messages for the VG-99
-#define VG99_REQUEST_PATCHNAME 0x60000000, 16 //Request 16 bytes for current patch name
+#define VG99_REQUEST_CURRENT_PATCH_NAME 0x60000000, 16 //Request 16 bytes for current patch name
 #define VG99_REQUEST_PATCH_NUMBER 0x71000100, 2 //Request current patch number
 
 #define VG99_EDITOR_MODE_ON 0x70000100, 0x01 //Gets the VG-99 spitting out lots of sysex data. Does not have to be switched on for the tuner to work on the VG99
@@ -53,7 +53,7 @@ bool VG99_read_assign_target = false;
 // 1. VG99 sends continually F0 41 7F 00 00 1F 11 00 01 7F F7 on RRC port (not on other ports)
 // 2. FC300 responds with ???
 
-// ********************************* Section 2: VG99 comon MIDI in functions ********************************************
+// ********************************* Section 2: VG99 common MIDI in functions ********************************************
 
 void check_SYSEX_in_VG99(const unsigned char* sxdata, short unsigned int sxlength) {  // Check incoming sysex messages from VG99. Called from MIDI:OnSysEx/OnSerialSysEx
 
@@ -71,33 +71,42 @@ void check_SYSEX_in_VG99(const unsigned char* sxdata, short unsigned int sxlengt
     }
 
     // Check if it is the current parameter
-    if (address == SP[current_parameter].Address) {
-      switch (SP[current_parameter].Type) {
+    if (address == SP[Current_switch].Address) {
+      switch (SP[Current_switch].Type) {
         case VG99_PATCH:
         case VG99_RELSEL:
           for (uint8_t count = 0; count < 16; count++) {
-            SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
+            SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = current_parameter + 1;
-          if (SP[current_parameter].PP_number == VG99_patch_number) {
-            VG99_patch_name = SP[current_parameter].Label; // Load patchname when it is read
+          //update_lcd = Current_switch + 1;
+          if (SP[Current_switch].PP_number == VG99_patch_number) {
+            VG99_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
-          DEBUGMSG(SP[current_parameter].Label);
-          Request_next_parameter();
+          DEBUGMSG(SP[Current_switch].Label);
+          Request_next_switch();
           break;
         case VG99_PARAMETER:
           VG99_read_parameter(sxdata[11], sxdata[12]);
-          Request_next_parameter();
+          Request_next_switch();
           break;
         case VG99_ASSIGN:
           if (VG99_read_assign_target == false) VG99_read_current_assign(address, sxdata, sxlength);
           else {
             VG99_read_parameter(sxdata[11], sxdata[12]); //Reading the assign target is equal to readig the parameter
-            Request_next_parameter();
+            Request_next_switch();
           }
           break;
       }
+    }
+    
+    // Check if it is the current patch name (address: 0x60, 0x00, 0x00, 0x00)
+    if ((sxdata[6] == 0x12) && (address == 0x60000000) ) {
+      VG99_patch_name = "";
+      for (uint8_t count = 11; count < 28; count++) {
+        VG99_patch_name = VG99_patch_name + static_cast<char>(sxdata[count]); //Add ascii character to Patch Name String
+      }
+      update_main_lcd = true;
     }
 
     // Check if it is the guitar on/off states
@@ -143,6 +152,7 @@ void check_PC_in_VG99(byte channel, byte program) { // Check incoming PC message
     uint16_t new_patch = (VG99_CC01 * 100) + program;
     if (VG99_patch_number != new_patch) {
       VG99_patch_number = new_patch;
+      request_VG99(VG99_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
       VG99_page_check();
       VG99_do_after_patch_selection();
     }
@@ -161,12 +171,13 @@ void VG99_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     //write_VG99(VG99_EDITOR_MODE_ON); // Put the VG-99 into editor mode - saves lots of messages on the VG99 display, but also overloads the buffer
     //VG99_fix_reverse_pedals();
     request_VG99(VG99_REQUEST_PATCH_NUMBER);
-    VG99_do_after_patch_selection();
+    request_VG99(VG99_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
+      VG99_do_after_patch_selection();
     load_current_page(true);
   }
 }
 
-// ********************************* Section 3: VG99 comon MIDI out functions ********************************************
+// ********************************* Section 3: VG99 common MIDI out functions ********************************************
 
 void VG99_check_sysex_delay() { // Will delay if last message was within VG99_SYSEX_DELAY_LENGTH (10 ms)
   while (millis() - VG99sysexDelay <= VG99_SYSEX_DELAY_LENGTH) {}
@@ -290,7 +301,7 @@ void VG99_do_after_patch_selection() {
   Current_device = VG99;
   update_LEDS = true;
   update_main_lcd = true;
-  update_parameter_lcds = PARAMETERS;
+  update_switch_lcds = PARAMETERS;
   VG99_request_guitar_switch_states();
   //EEPROM.write(EEPROM_VG99_PATCH_MSB, (VG99_patch_number / 256));
   //EEPROM.write(EEPROM_VG99_PATCH_LSB, (VG99_patch_number % 256));
@@ -435,7 +446,7 @@ void VG99_mute_now() {
 
 // Procedures for the VG99_PARAMETER:
 // 1. Load in SP array - in load_current_page(true)
-// 2. Request parameter state - in Request_current_parameter()
+// 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - VG99_read_parameter() below
 // 4. Press switch - VG99_parameter_press() below - also calls VG99_check_update_label()
 // 5. Release switch - VG99_parameter_release() below - also calls VG99_check_update_label()
@@ -773,24 +784,24 @@ void VG99_parameter_release(uint8_t Sw, uint8_t Cmd, int8_t number) {
 }
 
 void VG99_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current VG99 parameter
-  SP[current_parameter].Target_byte1 = byte1;
-  SP[current_parameter].Target_byte2 = byte2;
+  SP[Current_switch].Target_byte1 = byte1;
+  SP[Current_switch].Target_byte2 = byte2;
 
-  uint8_t part = SP[current_parameter].PP_number / 30; // Split the parameter number in part and index
-  uint8_t index = SP[current_parameter].PP_number % 30;
+  uint8_t part = SP[Current_switch].PP_number / 30; // Split the parameter number in part and index
+  uint8_t index = SP[Current_switch].PP_number % 30;
 
   // Set the status
-  SP[current_parameter].State = 0;
-  if (SP[current_parameter].Type == VG99_PARAMETER) {
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value5) SP[current_parameter].State = 5;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value4) SP[current_parameter].State = 4;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value3) SP[current_parameter].State = 3;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value2) SP[current_parameter].State = 2;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value1) SP[current_parameter].State = 1;
+  SP[Current_switch].State = 0;
+  if (SP[Current_switch].Type == VG99_PARAMETER) {
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value5) SP[Current_switch].State = 5;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value4) SP[Current_switch].State = 4;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value3) SP[Current_switch].State = 3;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value2) SP[Current_switch].State = 2;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value1) SP[Current_switch].State = 1;
   }
   else { // It must be a VG99_ASSIGN
-    if (byte1 == SP[current_parameter].Assign_min) SP[current_parameter].State = 2;
-    if (byte1 == SP[current_parameter].Assign_max) SP[current_parameter].State = 1;
+    if (byte1 == SP[Current_switch].Assign_min) SP[Current_switch].State = 2;
+    if (byte1 == SP[Current_switch].Assign_max) SP[Current_switch].State = 1;
   }
 
   // Set the colour
@@ -799,19 +810,19 @@ void VG99_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current VG99
   //Check for special colours:
   switch (my_colour) {
     case VG99_FX_COLOUR:
-      SP[current_parameter].Colour = VG99_FX_colours[byte2]; //MFX type read in byte2
+      SP[Current_switch].Colour = VG99_FX_colours[byte2]; //MFX type read in byte2
       break;
     case VG99_FX_TYPE_COLOUR:
-      SP[current_parameter].Colour = VG99_FX_colours[byte1]; //MFX type read in byte1
+      SP[Current_switch].Colour = VG99_FX_colours[byte1]; //MFX type read in byte1
       break;
     case VG99_POLYFX_COLOUR:
-      SP[current_parameter].Colour = VG99_polyFX_colours[byte2]; //MOD type read in byte2
+      SP[Current_switch].Colour = VG99_polyFX_colours[byte2]; //MOD type read in byte2
       break;
     case VG99_POLYFX_TYPE_COLOUR:
-      SP[current_parameter].Colour = VG99_polyFX_colours[byte1]; //MOD type read in byte1
+      SP[Current_switch].Colour = VG99_polyFX_colours[byte1]; //MOD type read in byte1
       break;
     default:
-      SP[current_parameter].Colour =  my_colour;
+      SP[Current_switch].Colour =  my_colour;
       break;
   }
 
@@ -827,8 +838,8 @@ void VG99_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current VG99
     msg = msg + ":" + type_name;
   }
   //Copy it to the display name:
-  set_label(current_parameter, msg);
-  //update_lcd = current_parameter + 1;
+  set_label(Current_switch, msg);
+  //update_lcd = Current_switch + 1;
 }
 
 void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -847,7 +858,7 @@ void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      //update_lcd = current_parameter + 1;
+      //update_lcd = Current_switch + 1;
     }
   }
 }
@@ -925,14 +936,14 @@ void VG99_assign_load(uint8_t sw, uint8_t assign_number, uint8_t my_trigger) { /
 }
 
 void VG99_request_current_assign() {
-  uint8_t index = SP[current_parameter].Assign_number - 1;  //index should be between 0 and 7
-  SP[current_parameter].Address = VG99_assign_address[index];
+  uint8_t index = SP[Current_switch].Assign_number - 1;  //index should be between 0 and 7
+  SP[Current_switch].Address = VG99_assign_address[index];
   if (index < VG99_NUMBER_OF_ASSIGNS) {
     DEBUGMSG("Request assign " + String(index + 1));
     VG99_read_assign_target = false;
-    request_VG99(SP[current_parameter].Address, 14);  //Request 14 bytes for the VG99 assign
+    request_VG99(SP[Current_switch].Address, 14);  //Request 14 bytes for the VG99 assign
   }
-  else Request_next_parameter(); // Wrong assign number given in Config - skip it
+  else Request_next_switch(); // Wrong assign number given in Config - skip it
 }
 
 void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, short unsigned int sxlength) {
@@ -949,12 +960,12 @@ void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   // 1) CTL assign with FC300 CTL as source
   // 2) CTL assign with cc09 - cc31 or cc64 - cc95 as source
   // 3) FC300 CTL1-8 assign with fixed source
-  uint8_t my_trigger = SP[current_parameter].Trigger;
+  uint8_t my_trigger = SP[Current_switch].Trigger;
   if ((my_trigger >= 1) && (my_trigger <= 8)) my_trigger = my_trigger + 14; // Trigger if FC300 CTRL 1 - 8. Add 14 to match the VG99 implemntation of these sources (0x0F - 0x16)
   else if ((my_trigger >= 9) && (my_trigger <= 31)) my_trigger = my_trigger + 24; // Trigger is cc09 - cc31 Add 24 to match the VG99 implemntation of these sources (0x19 - 0x37)
   else if ((my_trigger >= 64) && (my_trigger <= 95)) my_trigger = my_trigger - 8; // Trigger is cc64 - cc95 Add 24 to match the VG99 implemntation of these sources (0x38 - 0x57)
 
-  if (SP[current_parameter].Assign_number <= 16) assign_on = ((assign_switch == 0x01) && (my_trigger == assign_source)); // Check if assign is on by checking assign switch and source
+  if (SP[Current_switch].Assign_number <= 16) assign_on = ((assign_switch == 0x01) && (my_trigger == assign_source)); // Check if assign is on by checking assign switch and source
   else assign_on = (assign_switch == 0x01); // Assign is FC300 CTL1-8 type, so we do not need to check the source
 
   DEBUGMSG("VG-99 Assign_switch: 0x" + String(assign_switch, HEX));
@@ -966,53 +977,53 @@ void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
   DEBUGMSG("VG-99 Assign_trigger-check:" + String(my_trigger) + "==" + String(assign_source));
 
   if (assign_on) {
-    SP[current_parameter].Assign_on = true; // Switch the pedal off
-    SP[current_parameter].Latch = assign_latch;
+    SP[Current_switch].Assign_on = true; // Switch the pedal off
+    SP[Current_switch].Latch = assign_latch;
 
     // Allow for VG-99 assign min and max swap. Is neccesary, because the VG-99 will not save a parameter in the on-state, unless you swap the assign min and max values
     if (assign_target_max > assign_target_min) {
       // Store values the normal way around
-      SP[current_parameter].Assign_max = assign_target_max;
-      SP[current_parameter].Assign_min = assign_target_min;
+      SP[Current_switch].Assign_max = assign_target_max;
+      SP[Current_switch].Assign_min = assign_target_min;
     }
     else {
       // Reverse the values
-      SP[current_parameter].Assign_max = assign_target_min;
-      SP[current_parameter].Assign_min = assign_target_max;
+      SP[Current_switch].Assign_max = assign_target_min;
+      SP[Current_switch].Assign_min = assign_target_max;
     }
 
     // Request the target - on the VG99 target and the address of the target are directly related
-    SP[current_parameter].Address = 0x60000000 + assign_target;
+    SP[Current_switch].Address = 0x60000000 + assign_target;
 
     // We have to check the table to find the location of the target there
     found = VG99_target_lookup(assign_target); // Lookup the address of the target in the VG99_Parameters array
 
-    DEBUGMSG("Request target of assign " + String(SP[current_parameter].Assign_number) + ": " + String(SP[current_parameter].Address, HEX));
+    DEBUGMSG("Request target of assign " + String(SP[Current_switch].Assign_number) + ": " + String(SP[Current_switch].Address, HEX));
     if (found) {
       VG99_read_assign_target = true;
-      request_VG99((SP[current_parameter].Address), 2);
+      request_VG99((SP[Current_switch].Address), 2);
     }
     else {
-      SP[current_parameter].PP_number = NOT_FOUND;
-      SP[current_parameter].Colour = VG99_STOMP_COLOUR;
+      SP[Current_switch].PP_number = NOT_FOUND;
+      SP[Current_switch].Colour = VG99_STOMP_COLOUR;
       // Set the Label
-      if (SP[current_parameter].Assign_number <= 16) msg = "CC#" + String(SP[current_parameter].Trigger) + " (ASGN" + String(SP[current_parameter].Assign_number) + ")";
-      else msg = "FC300 ASGN" + String(SP[current_parameter].Assign_number - 16);
-      set_label(current_parameter, msg);
-      Request_next_parameter();
+      if (SP[Current_switch].Assign_number <= 16) msg = "CC#" + String(SP[Current_switch].Trigger) + " (ASGN" + String(SP[Current_switch].Assign_number) + ")";
+      else msg = "FC300 ASGN" + String(SP[Current_switch].Assign_number - 16);
+      set_label(Current_switch, msg);
+      Request_next_switch();
     }
 
   }
   else { // Assign is off
-    SP[current_parameter].Assign_on = false; // Switch the pedal off
-    SP[current_parameter].State = 0; // Switch the stompbox off
-    SP[current_parameter].Latch = MOMENTARY; // Make it momentary
-    SP[current_parameter].Colour = VG99_STOMP_COLOUR; // Set the on colour to default
+    SP[Current_switch].Assign_on = false; // Switch the pedal off
+    SP[Current_switch].State = 0; // Switch the stompbox off
+    SP[Current_switch].Latch = MOMENTARY; // Make it momentary
+    SP[Current_switch].Colour = VG99_STOMP_COLOUR; // Set the on colour to default
     // Set the Label
-    if (SP[current_parameter].Assign_number <= 16) msg = "CC#" + String(SP[current_parameter].Trigger);
-    else msg = "--"; //"FC300 ASGN" + String(SP[current_parameter].Assign_number - 16);
-    set_label(current_parameter, msg);
-    Request_next_parameter();
+    if (SP[Current_switch].Assign_number <= 16) msg = "CC#" + String(SP[Current_switch].Trigger);
+    else msg = "--"; //"FC300 ASGN" + String(SP[Current_switch].Assign_number - 16);
+    set_label(Current_switch, msg);
+    Request_next_switch();
   }
 }
 
@@ -1024,7 +1035,7 @@ bool VG99_target_lookup(uint16_t target) {
   for (uint8_t i = 0; i < VG99_NUMBER_OF_PARAMETERS; i++) {
     if (VG99_parameters[part][i].Address == 0) break; //Break the loop if there is no more useful data
     if (target == VG99_parameters[part][i].Address) { //Check is we've found the right target
-      SP[current_parameter].PP_number = (part * 30) + i; // Save the index number
+      SP[Current_switch].PP_number = (part * 30) + i; // Save the index number
       found = true;
     }
   }

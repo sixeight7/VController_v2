@@ -260,9 +260,11 @@ struct SP_struct {
   uint8_t Type;
   bool Read;            // Switches do not always need reading - after load this variable will indicate if it is neccesary or not.
   uint8_t State;        // State of the switch: on (1) or off(0) or three extra states for TRI/FOUR/FIVESTATE (2-4)
+  uint8_t LED_state;    // State of the LED: on (1), off (0), dimmed (2) or blink (3)
   bool Pressed;         // True when switch is pressed, false when released.
   uint8_t Latch;            // MOMENTARY (0), LATCH (1) TRI/FOUR/FIVESTATE (2-4)
-  char Label[SP_LABEL_SIZE + 1];        //LCD label
+  char Title[SP_LABEL_SIZE + 1];        //Title shows on LCD line 1
+  char Label[SP_LABEL_SIZE + 1];        //Label shows on LCD line 2
   uint8_t Colour;        //LED settings
   uint8_t Device;        //Which device will be read?
   uint8_t Trigger;       // The trigger of the pedal
@@ -273,12 +275,13 @@ struct SP_struct {
   //uint16_t Assign_target;// Assign: target
   uint16_t Assign_min;   // Assign: min-value (switch is off)
   uint16_t Assign_max;   // Assign: max_value (switch is on)
-  uint16_t Target_byte1;  // Once the assign target is known, the state of the target is read into two bytes
-  uint16_t Target_byte2;  // This byte often contains the type of the assign - which we exploit in the part of parameter feedback
-  uint16_t Target_byte3;  // For the Zoom G5, i needed some extra locations for target data (1 for each FX slot0
-  uint16_t Target_byte4;
-  uint16_t Target_byte5;
-  uint16_t Target_byte6;
+  uint8_t Target_byte1;  // Once the assign target is known, the state of the target is read into two bytes
+  uint8_t Target_byte2;  // This byte often contains the type of the assign - which we exploit in the part of parameter feedback
+  uint8_t Target_byte3;  // For the Zoom G5, i needed some extra locations for target data (1 for each FX slot)
+  uint8_t Target_byte4;
+  uint8_t Target_byte5;
+  uint8_t Target_byte6;
 };
 
 SP_struct SP[NUMBER_OF_SWITCHES];  // SP = Switch Parameters
+

@@ -312,7 +312,7 @@ void global_tap_tempo_press() {
   reset_tap_tempo_LED();
 }
 
-#define BPM_LED_ON_TIME 50 // The time the bpm LED is on in msec
+#define BPM_LED_ON_TIME 100 // The time the bpm LED is on in msec. 50 for real LED, 100 for virtual LED
 #define BPM_LED_ADJUST 1   // LED is running a little to slow. This is an adjustment of a few msecs
 uint32_t bpm_LED_timer = 0;
 uint32_t bpm_LED_timer_length = BPM_LED_ON_TIME;
@@ -411,3 +411,4 @@ void Switch_VController_on() {
   Main_lcd.print("V-controller v2");  // Show startup message
   show_status_message("  by SixEight");  //Please give me the credits :-)
 }
+

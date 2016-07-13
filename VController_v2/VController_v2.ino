@@ -53,7 +53,7 @@ Software structure:
 - Initialization of LCDs, LEDs and MIDI ports
 - Configuration of the switches is done in the page[] array on the Config page.
 - On startup, detection of devices, page change or patch change the current page is loaded in the SP[] array (void load_page)
-- After the page is loaded, the patchnames and parameter states are read (void Request_first_parameter, Request_next_parameter and Request_current_parameter)
+- After the page is loaded, the patchnames and parameter states are read (void Request_first_switch, Request_next_switch and Request_current_switch)
 - Main loop checks for switches being pressed (Switch_check/Switch Control), midi received and update of LCD and LED states.
 
 */

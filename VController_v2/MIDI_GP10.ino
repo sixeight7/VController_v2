@@ -7,7 +7,7 @@
 
 #define GP10_EDITOR_MODE_ON 0x7F000001, 0x01 //Gets the GP-10 spitting out lots of sysex data. Should be switched on, otherwise the tuner does not work
 #define GP10_EDITOR_MODE_OFF 0x7F000001, 0x00
-#define GP10_REQUEST_PATCH_NAME 0x20000000, 12 //Request 12 bytes for current patch name
+#define GP10_REQUEST_CURRENT_PATCH_NAME 0x20000000, 12 //Request 12 bytes for current patch name
 #define GP10_REQUEST_PATCH_NUMBER 0x00000000, 1 //Request current patch number
 
 #define GP10_TUNER_ON 0x7F000002, 0x02 // Changes the running mode of the GP-10 to Tuner - Got these terms from the VG-99 sysex manual.
@@ -30,7 +30,7 @@ unsigned long GP10sysexDelay = 0;
 
 uint8_t GP10_FX_toggle_LED = 0; // The LED shown for the FX type button
 
-// ********************************* Section 2: GP10 comon MIDI in functions ********************************************
+// ********************************* Section 2: GP10 common MIDI in functions ********************************************
 
 void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlength) { // Check incoming sysex messages from GP10. Called from MIDI:OnSysEx/OnSerialSysEx
 
@@ -45,34 +45,43 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
         GP10_assign_read = false; // Assigns should be read again
         GP10_page_check();
         GP10_do_after_patch_selection();
-        update_parameter_lcds = FULL;
+        update_switch_lcds = FULL;
       }
     }
 
     // Check if it is the current parameter
-    if (address == SP[current_parameter].Address) {
-      switch (SP[current_parameter].Type) {
+    if (address == SP[Current_switch].Address) {
+      switch (SP[Current_switch].Type) {
         case GP10_PATCH:
         case GP10_RELSEL:
           for (uint8_t count = 0; count < 12; count++) {
-            SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 12]); //Add ascii character to the SP.Label String
+            SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 12]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = current_parameter + 1;
-          if (SP[current_parameter].PP_number == GP10_patch_number) {
-            GP10_patch_name = SP[current_parameter].Label; // Load patchname when it is read
+          //update_lcd = Current_switch + 1;
+          if (SP[Current_switch].PP_number == GP10_patch_number) {
+            GP10_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
-          DEBUGMSG(SP[current_parameter].Label);
-          Request_next_parameter();
+          DEBUGMSG(SP[Current_switch].Label);
+          Request_next_switch();
           break;
 
         case GP10_PARAMETER:
         case GP10_ASSIGN:
           //case GP10_ASSIGN:
           GP10_read_parameter(sxdata[12], sxdata[13]);
-          Request_next_parameter();
+          Request_next_switch();
           break;
       }
+    }
+    
+    // Check if it is the patch name (address: 0x20, 0x00, 0x00, 0x00)
+    if (address == 0x20000000) {
+      GP10_patch_name = "";
+      for (uint8_t count = 12; count < 24; count++) {
+        GP10_patch_name = GP10_patch_name + static_cast<char>(sxdata[count]); //Add ascii character to Patch Name String
+      }
+      update_main_lcd = true;
     }
 
     // Read GP10 assign area
@@ -94,6 +103,7 @@ void check_PC_in_GP10(byte channel, byte program) {  // Check incoming PC messag
     if (GP10_patch_number != program) {
       GP10_patch_number = program;
       GP10_assign_read = false; // Assigns should be read again
+      request_GP10(GP10_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
       GP10_page_check();
       GP10_do_after_patch_selection();
     }
@@ -110,6 +120,7 @@ void GP10_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
     GP10_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
     DEBUGMSG("GP-10 detected on MIDI port " + String(Current_MIDI_port));
     request_GP10(GP10_REQUEST_PATCH_NUMBER);
+    request_GP10(GP10_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
     //write_GP10(GP10_EDITOR_MODE_ON); // Put the GP10 in EDITOR mode - otherwise tuner will not work
     GP10_do_after_patch_selection();
     GP10_assign_read = false; // Assigns should be read again
@@ -117,7 +128,7 @@ void GP10_identity_check(const unsigned char* sxdata, short unsigned int sxlengt
   }
 }
 
-// ********************************* Section 3: GP10 comon MIDI out functions ********************************************
+// ********************************* Section 3: GP10 common MIDI out functions ********************************************
 
 void GP10_check_sysex_delay() { // Will delay if last message was within GP10_SYSEX_DELAY_LENGTH (10 ms)
   while (millis() - GP10sysexDelay <= GP10_SYSEX_DELAY_LENGTH) {}
@@ -168,11 +179,6 @@ void GP10_request_patch_number() {
   request_GP10(GP10_REQUEST_PATCH_NUMBER);
 }
 
-void GP10_request_name() {
-  request_GP10(GP10_REQUEST_PATCH_NAME);
-}
-
-
 void GP10_send_bpm() {
   write_GP10(GP10_TEMPO, bpm / 16, bpm % 16); // Tempo is modulus 16. It's all so very logical. NOT.
 }
@@ -205,7 +211,7 @@ void GP10_do_after_patch_selection() {
   Current_device = GP10;
   update_LEDS = true;
   update_main_lcd = true;
-  update_parameter_lcds = PARAMETERS;
+  update_switch_lcds = PARAMETERS;
   GP10_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GP10_PATCH_NUMBER, GP10_patch_number);
 
@@ -219,16 +225,16 @@ void GP10_relsel_load(uint8_t sw, uint8_t bank_position, uint8_t bank_size) {
 }
 
 void GP10_patch_load(uint8_t sw, uint8_t number) {
-  SP[sw].Colour = GP10_PATCH_COLOUR;
+  SP[sw].Colour = GP10_PATCH_COLOUR; // Set the colour
   SP[sw].PP_number = number;
   number++;
   SP[sw].Address = 0x20000000 + ((number / 0x20) * 0x1000000) + ((number % 0x20) * 0x40000); //Calculate the address where the patchname is stored on the GP-10
 }
 
 void GP10_patch_select(uint16_t new_patch) {
-  
-  if (new_patch == GP10_patch_number) GP10_select_switch();
-  else GP10_SendProgramChange(new_patch);
+  // Check whether the current patch needs to be switched on or whether a new patch is chosen
+  if (new_patch == GP10_patch_number) GP10_select_switch(); // Not a new patch - do US20 emulation
+  else GP10_SendProgramChange(new_patch); //New patch - send program change
   GP10_bank_selection_active = false;
 
 }
@@ -345,7 +351,7 @@ void GP10_mute() {
 
 // Procedures for the GP10_PARAMETER:
 // 1. Load in SP array - in load_current_page(true)
-// 2. Request parameter state - in Request_current_parameter()
+// 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - GP10_read_parameter() below
 // 4. Press switch - GP10_parameter_press() below - also calls GP10_check_update_label()
 // 5. Release switch - GP10_parameter_release() below - also calls GP10_check_update_label()
@@ -456,31 +462,31 @@ void GP10_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
 }
 
 void GP10_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GP10 parameter
-  SP[current_parameter].Target_byte1 = byte1;
-  SP[current_parameter].Target_byte2 = byte2;
+  SP[Current_switch].Target_byte1 = byte1;
+  SP[Current_switch].Target_byte2 = byte2;
 
   // Set the status
-  SP[current_parameter].State = 0;
-  if (SP[current_parameter].Type == GP10_PARAMETER) {
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value5) SP[current_parameter].State = 5;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value4) SP[current_parameter].State = 4;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value3) SP[current_parameter].State = 3;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value2) SP[current_parameter].State = 2;
-    if (byte1 == Page[Current_page].Switch[current_parameter].Cmd[0].Value1) SP[current_parameter].State = 1;
+  SP[Current_switch].State = 0;
+  if (SP[Current_switch].Type == GP10_PARAMETER) {
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value5) SP[Current_switch].State = 5;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value4) SP[Current_switch].State = 4;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value3) SP[Current_switch].State = 3;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value2) SP[Current_switch].State = 2;
+    if (byte1 == Page[Current_page].Switch[Current_switch].Cmd[0].Value1) SP[Current_switch].State = 1;
   }
   else { // It must be a GP10_ASSIGN
-    if (byte1 == SP[current_parameter].Assign_min) SP[current_parameter].State = 2;
-    if (byte1 == SP[current_parameter].Assign_max) SP[current_parameter].State = 1;
+    if (byte1 == SP[Current_switch].Assign_min) SP[Current_switch].State = 2;
+    if (byte1 == SP[Current_switch].Assign_max) SP[Current_switch].State = 1;
   }
 
   // Set the colour
-  uint8_t index = SP[current_parameter].PP_number; // Read the parameter number (index to GP10-parameter array)
+  uint8_t index = SP[Current_switch].PP_number; // Read the parameter number (index to GP10-parameter array)
   uint8_t my_colour = GP10_parameters[index].Colour;
 
   //Check for special colours:
-  if (my_colour == GP10_FX_COLOUR) SP[current_parameter].Colour = GP10_FX_colours[byte2]; //FX type read in byte2
-  else if (my_colour == GP10_FX_TYPE_COLOUR) SP[current_parameter].Colour = GP10_FX_colours[byte1]; //FX type read in byte1
-  else SP[current_parameter].Colour =  my_colour;
+  if (my_colour == GP10_FX_COLOUR) SP[Current_switch].Colour = GP10_FX_colours[byte2]; //FX type read in byte2
+  else if (my_colour == GP10_FX_TYPE_COLOUR) SP[Current_switch].Colour = GP10_FX_colours[byte1]; //FX type read in byte1
+  else SP[Current_switch].Colour =  my_colour;
 
   // Set the display message
   String msg = GP10_parameters[index].Name;
@@ -493,8 +499,8 @@ void GP10_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GP10
     msg = msg + ": " + type_name;
   }
   //Copy it to the display name:
-  set_label(current_parameter, msg);
-  //update_lcd = current_parameter + 1;
+  set_label(Current_switch, msg);
+  //update_lcd = Current_switch + 1;
 }
 
 void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -509,7 +515,7 @@ void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 
       //Copy it to the display name:
       set_label(Sw, msg);
-      //update_lcd = current_parameter + 1;
+      //update_lcd = Current_switch + 1;
     }
   }
 }
@@ -610,7 +616,7 @@ void GP10_assign_request() { //Request the current assign
   uint16_t assign_target, assign_target_min, assign_target_max;
 
   // First we read out the GP10_assign_mem. We calculate the bytes we need to read from an index.
-  uint8_t index = SP[current_parameter].Assign_number - 1; //index is between 0 (assign 1) and 7 (assign 8)
+  uint8_t index = SP[Current_switch].Assign_number - 1; //index is between 0 (assign 1) and 7 (assign 8)
   if (index < 8) {
     assign_switch = GP10_assign_mem[index];
     assign_target = (GP10_assign_mem[8 + (index * 3)] << 8) + (GP10_assign_mem[9 + (index * 3)] << 4) + GP10_assign_mem[10 + (index * 3)];
@@ -619,7 +625,7 @@ void GP10_assign_request() { //Request the current assign
     assign_source = GP10_assign_mem[0x60 + index];
     assign_latch = GP10_assign_mem[0x68 + index];
 
-    uint8_t my_trigger = SP[current_parameter].Trigger;
+    uint8_t my_trigger = SP[Current_switch].Trigger;
     if ((my_trigger >= 1) && (my_trigger <= 31)) my_trigger = my_trigger + 12; // Trigger is cc01 - cc31
     if ((my_trigger >= 64) && (my_trigger <= 95)) my_trigger = my_trigger - 20; // Trigger is cc64 - cc95
     assign_on = ((assign_switch == 0x01) && (my_trigger == assign_source)); // Check if assign is on by checking assign switch and source
@@ -641,34 +647,34 @@ void GP10_assign_request() { //Request the current assign
   }
 
   if (assign_on) {
-    SP[current_parameter].Assign_on = true; // Switch the pedal on
-    SP[current_parameter].Latch = assign_latch;
-    SP[current_parameter].Assign_max = assign_target_max;
-    SP[current_parameter].Assign_min = assign_target_min;
+    SP[Current_switch].Assign_on = true; // Switch the pedal on
+    SP[Current_switch].Latch = assign_latch;
+    SP[Current_switch].Assign_max = assign_target_max;
+    SP[Current_switch].Assign_min = assign_target_min;
 
     // Request the target
-    DEBUGMSG("Request target of assign " + String(index + 1) + ": " + String(SP[current_parameter].Address, HEX));
+    DEBUGMSG("Request target of assign " + String(index + 1) + ": " + String(SP[Current_switch].Address, HEX));
     found = GP10_target_lookup(assign_target); // Lookup the address of the target in the GR55_Parameters array
-    if (found) request_GP10((SP[current_parameter].Address), 2);
+    if (found) request_GP10((SP[Current_switch].Address), 2);
     else {  // Pedal set to a parameter which we do not have in the list.
-      SP[current_parameter].PP_number = NOT_FOUND;
-      SP[current_parameter].Colour = GP10_STOMP_COLOUR;
-      SP[current_parameter].Latch = MOMENTARY; // Because we cannot read the state, it is best to make the pedal momentary
+      SP[Current_switch].PP_number = NOT_FOUND;
+      SP[Current_switch].Colour = GP10_STOMP_COLOUR;
+      SP[Current_switch].Latch = MOMENTARY; // Because we cannot read the state, it is best to make the pedal momentary
       // Set the Label
-      msg = "ASGN" + String(SP[current_parameter].Assign_number) + ": Unknown";
-      set_label(current_parameter, msg);
-      Request_next_parameter();
+      msg = "ASGN" + String(SP[Current_switch].Assign_number) + ": Unknown";
+      set_label(Current_switch, msg);
+      Request_next_switch();
     }
   }
   else { // Assign is off
-    SP[current_parameter].Assign_on = false; // Switch the pedal off
-    SP[current_parameter].State = 0; // Switch the stompbox off
-    SP[current_parameter].Latch = MOMENTARY; // Make it momentary
-    SP[current_parameter].Colour = GP10_STOMP_COLOUR; // Set the on colour to default
+    SP[Current_switch].Assign_on = false; // Switch the pedal off
+    SP[Current_switch].State = 0; // Switch the stompbox off
+    SP[Current_switch].Latch = MOMENTARY; // Make it momentary
+    SP[Current_switch].Colour = GP10_STOMP_COLOUR; // Set the on colour to default
     // Set the Label
-    msg = "CC#" + String(SP[current_parameter].Trigger);
-    set_label(current_parameter, msg);
-    Request_next_parameter();
+    msg = "CC#" + String(SP[Current_switch].Trigger);
+    set_label(Current_switch, msg);
+    Request_next_switch();
   }
 }
 
@@ -678,8 +684,8 @@ bool GP10_target_lookup(uint16_t target) {
   bool found = false;
   for (uint8_t i = 0; i < GP10_NUMBER_OF_PARAMETERS; i++) {
     if (target == GP10_parameters[i].Target) { //Check is we've found the right target
-      SP[current_parameter].PP_number = i; // Save the index number
-      SP[current_parameter].Address = GP10_parameters[i].Address;
+      SP[Current_switch].PP_number = i; // Save the index number
+      SP[Current_switch].Address = GP10_parameters[i].Address;
       found = true;
     }
   }

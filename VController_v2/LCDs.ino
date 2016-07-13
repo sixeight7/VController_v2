@@ -21,6 +21,7 @@ LiquidCrystal_I2C	Main_lcd(0x27, EN_PIN, RW_PIN, RS_PIN, D4_PIN, D5_PIN, D6_PIN,
 
 // Displays above the switches
 #define NUMBER_OF_DISPLAYS 12
+
 //Declare an array of LiquidCrystal objects, each with the same pin settings, just a different i2c address
 LiquidCrystal_I2C lcd[NUMBER_OF_DISPLAYS] = {
   LiquidCrystal_I2C (0x21, EN_PIN, RW_PIN, RS_PIN, D4_PIN, D5_PIN, D6_PIN, D7_PIN),
@@ -44,27 +45,63 @@ bool update_main_lcd = false; // True if main display needs updating
 #define OFF 0
 #define FULL 1
 #define PARAMETERS 2
-bool update_parameter_lcds = OFF; // True if main display needs updating
+bool update_switch_lcds = OFF; // True if main display needs updating
 
 String Current_patch_number_string = "";
 String Current_patch_name = "                "; // Patchname displayed in the main display
 uint16_t Current_patch_number = 0;              // Patchnumber displayed in the main display
 uint8_t Current_device = 0;                     // The device from which the patchname comes
 
-String Display_number_string[NUMBER_OF_DISPLAYS];
+String Display_number_string[NUMBER_OF_DISPLAYS]; // Placeholder for patchnumbers on display
+
+// A virtual LED is a user defined character on the display
+// The state of these LEDs are set in the LED section.
+// It is updated from there.
+// Custom characters for virtual LEDs
+uint8_t Display_LED[NUMBER_OF_SWITCHES]; // For showing state of the LEDs on the display. Can have state on (1), off (0) and dimmed (2)
+byte vLED_on[8] = {
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b11111,
+  0b00000,
+  0b00000
+};
+byte vLED_off[8] = {
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
+byte vLED_dimmed[8] = {
+  0b00000,
+  0b00000,
+  0b00100,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000,
+  0b00000
+};
 
 void setup_LCD_control()
 {
   Main_lcd.begin (16, 2); //  <<----- My LCD was 16x2
 
-  // Switch on the backlight
   Main_lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-  Main_lcd.setBacklight(LOW);
+  Main_lcd.setBacklight(LOW); //switch off the backlight on the main display
 
   for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
     lcd[i].begin (16, 2);
     lcd[i].setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-    lcd[i].setBacklight(LOW); //switch off the backlight
+    lcd[i].setBacklight(LOW); // Switch off the backlight
+    Init_virtual_LED(i); // Initialize the virtual LEDs
   }
 }
 
@@ -88,11 +125,11 @@ void main_LCD_control()
       Main_lcd.setCursor (0, 1);       // go to start of 2nd line
       Main_lcd.print(Current_patch_name); // Show the current patchname
     }
-    
-    if (update_parameter_lcds != OFF) {
-      if (update_parameter_lcds == FULL) load_current_page(true); //Re-read the page - but just the parameters
-      if (update_parameter_lcds == PARAMETERS) load_current_page(false); //Re-read the page - but just the parameters
-      update_parameter_lcds = OFF;
+
+    if (update_switch_lcds != OFF) {
+      if (update_switch_lcds == FULL) load_current_page(true); //Re-read the page completely
+      if (update_switch_lcds == PARAMETERS) load_current_page(false); //Re-read the page - but just the parameters
+      update_switch_lcds = OFF;
     }
   }
 }
@@ -110,7 +147,13 @@ void update_LCDs(uint8_t number) {
         Display_number_string[number] = ""; //Clear the display_number_string
         GP10_number_format(SP[number].PP_number, Display_number_string[number]);
         lcd[number].setCursor (0, 0);
-        lcd[number].print("      " + Display_number_string[number] + "      ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print("   " + Display_number_string[number] + "    ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -126,7 +169,13 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("    [ GP10 ]    ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(" [ GP10 ] ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -135,7 +184,11 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("  [GP10 ASGN" + String(SP[number].Assign_number) + "]  ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print("[GP10 ASGN" + String(SP[number].Assign_number) + "]");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -147,7 +200,13 @@ void update_LCDs(uint8_t number) {
         Display_number_string[number] = ""; //Clear the display_number_string
         GR55_number_format(SP[number].PP_number, Display_number_string[number]);
         lcd[number].setCursor (0, 0);
-        lcd[number].print("     " + Display_number_string[number] + "     ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print("  " + Display_number_string[number] + "  ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -162,7 +221,13 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("    [ GR55 ]    ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(" [ GR55 ] ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -171,7 +236,9 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("  [GR55 ASGN" + String(SP[number].Assign_number) + "]  ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print("[GR55 ASGN" + String(SP[number].Assign_number) + "]" + char(0) + char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -183,7 +250,13 @@ void update_LCDs(uint8_t number) {
         Display_number_string[number] = ""; //Clear the display_number_string
         VG99_number_format(SP[number].PP_number, Display_number_string[number]);
         lcd[number].setCursor (0, 0);
-        lcd[number].print("      " + Display_number_string[number] + "      ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print("   " + Display_number_string[number] + "   ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -199,7 +272,12 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("    [ VG99 ]    ");
+        lcd[number].print(char(0)); // Virtual LEDs
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(" [ VG99 ] ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -209,10 +287,18 @@ void update_LCDs(uint8_t number) {
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
         if (SP[number].Assign_number < 16) { // Normal assign
-          lcd[number].print("  [VG99 ASGN" + String(SP[number].Assign_number) + "]  ");
+          lcd[number].print(char(0));
+          lcd[number].print(char(0));
+          lcd[number].print("[VG99 ASGN" + String(SP[number].Assign_number) + "]");
+          lcd[number].print(char(0));
+          lcd[number].print(char(0));
         }
         else {
-          lcd[number].print("     [CTL" + String(SP[number].Assign_number - 16) + "]     ");
+          lcd[number].print(char(0));
+          lcd[number].print(char(0));
+          lcd[number].print("   [CTL" + String(SP[number].Assign_number - 16) + "]   ");
+          lcd[number].print(char(0));
+          lcd[number].print(char(0));
         }
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
@@ -225,7 +311,13 @@ void update_LCDs(uint8_t number) {
         Display_number_string[number] = ""; //Clear the display_number_string
         ZG3_number_format(SP[number].PP_number, Display_number_string[number]);
         lcd[number].setCursor (0, 0);
-        lcd[number].print("       " + Display_number_string[number] + "      ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print("    " + Display_number_string[number] + "    ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -241,7 +333,13 @@ void update_LCDs(uint8_t number) {
       // What to show on the individual display
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("    [ FX" + String(SP[number].PP_number) + " ]    ");
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(" [ FX" + String(SP[number].PP_number) + " ]  " );
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
+        lcd[number].print(char(0));
         //lcd[number].print(SP[number].Label); // Show the current patchname
         centre_print_label(number);
       }
@@ -259,7 +357,9 @@ void update_LCDs(uint8_t number) {
     case TAP_TEMPO:
       if (number < NUMBER_OF_DISPLAYS) {
         lcd[number].setCursor (0, 0);
-        lcd[number].print("  <TAP TEMPO>   ");
+        lcd[number].print(char(0));
+        lcd[number].print(" <TAP TEMPO>  ");
+        lcd[number].print(char(0));
         lcd[number].setCursor (0, 1);
         lcd[number].print("    " + String(bpm) + " BPM    ");
       }
@@ -292,6 +392,15 @@ void clear_label(uint8_t no) {
   }
 }
 
+void set_title(uint8_t no, String &msg) {
+  // Check length does not exceed LABEL_SIZE
+  uint8_t msg_length = msg.length();
+  if (msg_length > SP_LABEL_SIZE) msg_length = SP_LABEL_SIZE;
+  for (uint8_t i = 0; i < msg_length; i++) {
+    SP[no].Title[i] = msg[i];
+  }
+}
+
 void set_label(uint8_t no, String &msg) {
   // Check length does not exceed LABEL_SIZE
   uint8_t msg_length = msg.length();
@@ -299,7 +408,6 @@ void set_label(uint8_t no, String &msg) {
   for (uint8_t i = 0; i < msg_length; i++) {
     SP[no].Label[i] = msg[i];
   }
-  //update_lcd = no;
 }
 
 void set_current_patch_name(uint8_t no) { //Copies the patchname from the SP array to the main display
@@ -308,9 +416,69 @@ void set_current_patch_name(uint8_t no) { //Copies the patchname from the SP arr
   }
 }
 
+
+#define PATCH_NUMBER_SEPERATOR "+"
 void set_patch_number_and_name() {
   // Here we determine what to show on the main display, based on what devices are active
-  uint8_t what_is_on = (VG99_on << 2) + (GR55_on << 1) + GP10_on; // Make number of three bits to quickly determine what is on and what of off
+  uint8_t number_of_active_devices = 0;
+  Current_patch_number_string = "";
+  String patch_names[NUMBER_OF_DEVICES]; //Array of strings for the patchnames
+
+  if (GP10_on) {
+    display_GP10_patch_number_string(); // Adds GP10 name to patch number string
+    Current_patch_number_string = Current_patch_number_string + PATCH_NUMBER_SEPERATOR; //Add a seperation sign in between
+    patch_names[number_of_active_devices] = GP10_patch_name; //Add patchname to string
+    number_of_active_devices++;
+  }
+
+  if (GR55_on) {
+    display_GR55_patch_number_string(); // Adds GP10 name to patch number string
+    Current_patch_number_string = Current_patch_number_string + PATCH_NUMBER_SEPERATOR; //Add a seperation sign in between
+    patch_names[number_of_active_devices] = GR55_patch_name; //Add patchname to string
+    number_of_active_devices++;
+  }
+
+  if (VG99_on) {
+    display_VG99_patch_number_string(); // Adds GP10 name to patch number string
+    Current_patch_number_string = Current_patch_number_string + PATCH_NUMBER_SEPERATOR; //Add a seperation sign in between
+    patch_names[number_of_active_devices] = VG99_patch_name; //Add patchname to string
+    number_of_active_devices++;
+  }
+
+  if (ZG3_on) {
+    display_ZG3_patch_number_string(); // Adds GP10 name to patch number string
+    Current_patch_number_string = Current_patch_number_string + PATCH_NUMBER_SEPERATOR; //Add a seperation sign in between
+    patch_names[number_of_active_devices] = ZG3_patch_name; //Add patchname to string
+    number_of_active_devices++;
+  }
+
+  // Cut last character of patch number string
+  uint8_t l = Current_patch_number_string.length();
+  Current_patch_number_string.remove(l - 1);
+
+  if (number_of_active_devices > 2) Current_patch_number_string = Current_patch_number_string + "     "; //Add spaces at the end to clear any remaining leters
+
+  // Show patchname
+  switch (number_of_active_devices) {
+    case 0:
+      Current_patch_name = "                ";
+      break;
+    case 1: // Only one device active
+      Current_patch_name = patch_names[0];
+      break;
+    case 2: // Show 7 bytes of both names
+      Current_patch_name = patch_names[0].substring(0, 7) + "  " + patch_names[1].substring(0, 7);
+      break;
+    case 3: // Show 4 bytes of both names
+      Current_patch_name = patch_names[0].substring(0, 4) + "  " + patch_names[1].substring(0, 4) + "  " + patch_names[2].substring(0, 4);
+      break;
+    default: // More then 3 devices
+      Current_patch_name = String(number_of_active_devices) + " devices on    ";
+      break;
+  }
+
+
+  /*uint8_t what_is_on = (VG99_on << 2) + (GR55_on << 1) + GP10_on; // Make number of three bits to quickly determine what is on and what of off
   Current_patch_number_string = "";
   switch (what_is_on) {
     case B001: //Just the GP10 is on
@@ -352,7 +520,7 @@ void set_patch_number_and_name() {
       Current_patch_number_string = Current_patch_number_string + "  "; //Add spaces at the end to clear any remaining leters
       Current_patch_name = GP10_patch_name.substring(0, 4) + "|" + GR55_patch_name.substring(0, 5) + "|" + VG99_patch_name.substring(0, 5);
       break;
-  }
+  }*/
 }
 
 void display_GP10_patch_number_string() {
@@ -449,34 +617,87 @@ void VG99_number_format(uint16_t number, String &Output) {
   Output = Output + String((number + 1) / 100) + String(((number + 1) / 10) % 10) + String((number + 1) % 10);
 }
 
+void display_ZG3_patch_number_string() {
+  if (ZG3_bank_selection_active == false) {
+    ZG3_number_format(ZG3_patch_number, Current_patch_number_string);
+  }
+  else {
+    String start_number1, end_number1;
+    ZG3_number_format(ZG3_bank_number * ZG3_bank_size, start_number1);
+    ZG3_number_format((ZG3_bank_number + 1) * ZG3_bank_size - 1, end_number1);
+    Current_patch_number_string = Current_patch_number_string + start_number1 + "-" + end_number1;
+  }
+
+}
 void ZG3_number_format(uint8_t number, String &Output) {
   char BankChar = 65 + (number / 10);
   Output = Output + BankChar + String(number % 10);
 }
 
-void centre_print_label(uint8_t s) {
+void centre_print_title(uint8_t s) {
   // Find out the number of spaces at the end of the label
-  uint8_t endpoint = 15; // Current label size
-  while ((endpoint > 0) && (SP[s].Label[endpoint] == ' ')) endpoint--;
+  uint8_t endpoint = SP_LABEL_SIZE - 1; // Go to last character
+  while ((endpoint > 0) && (SP[s].Title[endpoint] == ' ')) endpoint--; //Find last character that is not a space
 
   // Find the correct position on second line and print label
-  lcd[s].setCursor (0, 1); // First clear the first bit
-  lcd[s].print("        ");
-  lcd[s].setCursor ((15 - endpoint) / 2, 1);       // go to start of 2nd line
-  lcd[s].print(SP[s].Label);
+  lcd[s].setCursor (0, 0); // Go to start of 2nd line
+  lcd[s].print("                "); // Clear the title
+  lcd[s].setCursor ((SP_LABEL_SIZE - endpoint - 1) / 2, 1);  // Set the cursor to the start of the label
+  lcd[s].print(SP[s].Title); // Print it here.
 }
 
-void LCD_backlight_on() {
+void centre_print_label(uint8_t s) {
+  // Find out the number of spaces at the end of the label
+  uint8_t endpoint = SP_LABEL_SIZE - 1; // Go to last character
+  while ((endpoint > 0) && (SP[s].Label[endpoint] == ' ')) endpoint--; //Find last character that is not a space
+
+  // Find the correct position on second line and print label
+  lcd[s].setCursor (0, 1); // Go to start of 2nd line
+  lcd[s].print("        "); // Clear the start of the line
+  lcd[s].setCursor ((SP_LABEL_SIZE - endpoint - 1) / 2, 1);  // Set the cursor to the start of the label
+  lcd[s].print(SP[s].Label); // Print it here.
+}
+
+void LCD_backlight_on() { // Will switch all backlights on
   for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
-    lcd[i].setBacklight(HIGH); //switch on the backlight
+    lcd[i].setBacklight(HIGH);
   }
   Main_lcd.setBacklight(HIGH);
 }
 
-void LCD_backlight_off() {
+void LCD_backlight_off() { // Will switch all backlights off
   for (uint8_t i = 0; i < NUMBER_OF_DISPLAYS; i++) {
     lcd[i].setBacklight(LOW); //switch on the backlight
   }
   Main_lcd.setBacklight(LOW);
   Main_lcd.clear(); // Clear main display
+}
+
+//*** Virtual LEDs
+
+void Init_virtual_LED(uint8_t number) { // Initialize virtual LED
+  Display_LED[number] = 0;
+  if (number < NUMBER_OF_DISPLAYS) lcd[number].createChar(0, vLED_off);
+}
+
+void Set_virtual_LED(uint8_t number, uint8_t state) { // Will set the state of a virtual LED
+  if (Display_LED[number] != state) { // Check if state is new
+    Display_LED[number] = state; // Update state
+    // Update virtual LED
+    if (number < NUMBER_OF_DISPLAYS) {
+      if (state == 0) lcd[number].createChar(0, vLED_off);
+      if (state == 1) lcd[number].createChar(0, vLED_on);
+      if (state == 2) lcd[number].createChar(0, vLED_dimmed);
+    }
+  }
+}
+
+void Set_virtual_LED_colour(uint8_t number, uint8_t colour) {
+  if ((colour == 0) | (colour > 9)) Set_virtual_LED(number, 0); //Virtual LED off
+  else Set_virtual_LED(number, 1); //Virtual LED on
+  
+  /*if (colour == 0) Set_virtual_LED(number, 0); //Virtual LED off
+  else if (colour < 10) Set_virtual_LED(number, 1); //Virtual LED on
+  else if (colour > 10) Set_virtual_LED(number, 2); //Dimmed
+  else Set_virtual_LED(number, 0); //Virtual LED off for colour 10 as well*/
 }

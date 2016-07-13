@@ -4,10 +4,10 @@ uint8_t ZG3_MIDI_port = 0;
 uint16_t ZG3_FX[ZG3_NUMBER_OF_FX_SLOTS]; //Memory location for the 6 FX
 
 // ********************************* Section 1: Zoom G3 SYSEX messages ********************************************
-// Snooping with MIDI monitor the Zoom Edit&Share editor revealed the following info:
-// Zoom sysex uses no checksum like Roland. The messages do have a structure:
-// For example: F0 (start of sysex) 52 (Zoom manufacturing ID) 00 (Device ID) 5A (the G3) 33 (a command) F7 (end of sysex)
-// 1) The Zoom responds to an MIDI identity request message with F0 7E 00 (Device ID) 06 02 52 (Manufacturing ID for Zoom) 5A (the G3) 00  00 00 32 2E 31 30 F7
+// Documentation of Zoom sysex has been moved to http://www.vguitarforums.com/smf/index.php?topic=4329.msg131444#msg131444 (The ZOOM G3 v2 MIDI specification)
+// The relevant messages are repeated here
+// 1) The Zoom responds to an MIDI identity request message with F0 7E 00 (Device ID) 06 02 52 (Manufacturing ID for Zoom) 5A (model number G3) 00  00 00 32 2E 31 30 F7
+#define ZG3_MODEL_NUMBER 0x5A
 // 2) The editor keeps sending F0 52 00 5A 50 F7. The G3 does not seem to respond to it. But it may signal editor mode on.
 #define ZG3_EDITOR_MODE_ON 0x50
 // 3) If the editor sends F0 52 00 5A 33 F7, the G3 responds with the current Bank number (CC00 and CC32) and the current Program number (PC)
@@ -15,51 +15,44 @@ uint16_t ZG3_FX[ZG3_NUMBER_OF_FX_SLOTS]; //Memory location for the 6 FX
 // 4) If the editor sends F0 52 00 5A 29 F7, the G3 responds with the current patch in 110 bytes with comaand number 28. Byte 0x61 - 0x6B contain the patch name. with a strange 0 at position 0x65
 #define ZG3_REQUEST_CURRENT_PATCH 0x29
 // 5) The editor then reads all individual patches by sending F0 52 00 5A 09 00 00 {00-63} (patch number) F7.
-//    The G3 responds with 120 bytes with command number 08. Byte 0x66 - 0x70 contain the patch name. with a strange 0 at position 0x6A.
-// 5b) The the editor sends F0 52 00 5A 2B F7, with the answer: F0 52 00 5A 2A 00 63 40 1F 56 00 00 60 00 04 00 64 F7
-//     So it looks like sending odd command numbers are requests for data, and the answer has an even command number of one less
+//    The G3 responds with 120 bytes with command number 08. Byte 0x66 - 0x70 contain the patch name. with an "overflow byte" at position 0x6A.
 // 6) At the end the editor sends F0 52 00 5A 51 F7 and communication seems to stop.
 #define ZG3_EDITOR_MODE_OFF 0x51
 // 7) Switch effect on/off:
 //    Switch on effect 1: F0 52 00 5A 31 00 00 01 (on) 00 F7, switch off: F0 52 00 5A 31 00 00 00 (off) 00 F7
 //    Switch on effect 2: F0 52 00 5A 31 01 00 01 (on) 00 F7 switch off: F0 52 00 5A 31 01 00 00 (off) 00 F7. etc. sixth byte changes consistent for the effect
-// 8) Read effect type and state:
-//    Select effect from editor: choose Comp in slot 6: F0 52 00 5A 31 05 01 17 00 F7, MComp F0 52 00 5A 31 05 01 19 00 F7, ZNR: F0 52 00 5A 31 05 01 1B 00 F7
-//    Pedal pitchs: F0 52 00 5A 31 00 01 45  00 F7 ???
-//    Message is 31, 01 (change), then 17 (FX number)
-//    Now did some serious testing, reading the same patch over and reading the 120 bytes for each individual patch. Did the following discovery:
-//    The effect type and the status (on/off) are stored in one byte. Bit one is the status and the other bits are the effect number * 2
-//    For effect 1: byte 12, for effect 2: byte 25, for effect 3: byte 39, for effect 4: byte 53, for effect 5: byte 66 and for effect 6: byte 80
-// 9) Tempo. set bpm=40: F0 52 00 5A 31 06 08 28 00 F7 => 0x28 = 40, bpm=240: F0 52 00 5A 31 06 08 7A 01 F7 => 0x7A = 122, 122+128 = 240, so the last two bytes are the tempo.
+//    Same message is sent for changing a knob on the G3, but byte 7 is not 0x00 
+// 8) Tempo. set bpm=40: F0 52 00 5A 31 06 08 28 00 F7 => 0x28 = 40, bpm=240: F0 52 00 5A 31 06 08 7A 01 F7 => 0x7A = 122, 122+128 = 240, so the last two bytes are the tempo.
 
 void check_SYSEX_in_ZG3(const unsigned char* sxdata, short unsigned int sxlength) { // Check incoming sysex messages from ZG3. Called from MIDI:OnSysEx/OnSerialSysEx
 
   // Check if it is a message from a ZOOM G3
-  if ((sxdata[2] == ZG3_device_id) && (sxdata[3] == 0x5A)) {
+  if ((sxdata[2] == ZG3_device_id) && (sxdata[3] == ZG3_MODEL_NUMBER)) {
     // Check if it is the patch data
     if ((sxdata[4] == 0x08) && (sxlength == 120)) {
       // Read the patch name - needs to be read in two parts, because the fifth byte in the patchname string is a 0.
       for (uint8_t count = 0; count < 4; count++) { // Read the first four characters of the name
-        SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 0x66]); //Add ascii character to the SP.Label String
+        SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 0x66]); //Add ascii character to the SP.Label String
       }
       for (uint8_t count = 4; count < 10; count++) { // Read the last six characters of the name
-        SP[current_parameter].Label[count] = static_cast<char>(sxdata[count + 0x67]); //Add ascii character to the SP.Label String
+        SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 0x67]); //Add ascii character to the SP.Label String
       }
       // Remember the 6 FX slot types:
-      // The last bit of the FX type is stored at some unlogical places. It took a lot of decoding to find them. But this seems to work fine...
-      SP[current_parameter].Target_byte1 = ((sxdata[10] & B01000000) << 1) + sxdata[11];
-      SP[current_parameter].Target_byte2 = ((sxdata[18] & B00000010) << 6) + sxdata[24];
-      SP[current_parameter].Target_byte3 = ((sxdata[34] & B00001000) << 4) + sxdata[38];
-      SP[current_parameter].Target_byte4 = ((sxdata[50] & B00100000) << 2) + sxdata[52];
-      SP[current_parameter].Target_byte5 = ((sxdata[58] & B00000001) << 7) + sxdata[65];
-      SP[current_parameter].Target_byte6 = ((sxdata[74] & B00000100) << 5) + sxdata[79];
+      // The 8th bit of the FX type is stored in an "overflow byte". Here we extract the relevant bit from the overflow byte, move it in position and add the byte that contains bit 1-7.
+      // Check out my ZOOM G3 v2 MIDI specification online for more information
+      SP[Current_switch].Target_byte1 = ((sxdata[10] & B01000000) << 1) + sxdata[11];
+      SP[Current_switch].Target_byte2 = ((sxdata[18] & B00000010) << 6) + sxdata[24];
+      SP[Current_switch].Target_byte3 = ((sxdata[34] & B00001000) << 4) + sxdata[38];
+      SP[Current_switch].Target_byte4 = ((sxdata[50] & B00100000) << 2) + sxdata[52];
+      SP[Current_switch].Target_byte5 = ((sxdata[58] & B00000001) << 7) + sxdata[65];
+      SP[Current_switch].Target_byte6 = ((sxdata[74] & B00000100) << 5) + sxdata[79];
 
-      if (SP[current_parameter].PP_number == ZG3_patch_number) {
-        ZG3_patch_name = SP[current_parameter].Label; // Load patchname when it is read
+      if (SP[Current_switch].PP_number == ZG3_patch_number) {
+        ZG3_patch_name = SP[Current_switch].Label; // Load patchname when it is read
         update_main_lcd = true; // And show it on the main LCD
       }
-      DEBUGMSG(SP[current_parameter].Label);
-      Request_next_parameter();
+      DEBUGMSG(SP[Current_switch].Label);
+      Request_next_switch();
     }
     if ((sxdata[4] == 0x28) && (sxlength == 110)) {
       // These codes are the same as above. Only the sxdata postitions are all minus 5.
@@ -69,9 +62,18 @@ void check_SYSEX_in_ZG3(const unsigned char* sxdata, short unsigned int sxlength
       ZG3_FX[3] = ((sxdata[45] & B00100000) << 2) + sxdata[47];
       ZG3_FX[4] = ((sxdata[53] & B00000001) << 7) + sxdata[60];
       ZG3_FX[5] = ((sxdata[69] & B00000100) << 5) + sxdata[74];
-      load_current_page(false);
+      
+      // Read the patch name - needs to be read in two parts, because the fifth byte in the patchname string is a 0.
+      for (uint8_t count = 0; count < 4; count++) { // Read the first four characters of the name
+        ZG3_patch_name[count] = static_cast<char>(sxdata[count + 0x61]); //Add ascii character to the SP.Label String
+      }
+      for (uint8_t count = 4; count < 10; count++) { // Read the last six characters of the name
+        ZG3_patch_name[count] = static_cast<char>(sxdata[count + 0x62]); //Add ascii character to the SP.Label String
+      }
+      
+      load_current_page(false); // Will update all parameters on the page
     }
-    if ((sxdata[4] == 0x31) && (sxlength == 10)) { // Check for effect switched off on the ZOOM G5
+    if ((sxdata[4] == 0x31) && (sxdata[6] == 0x00) && (sxlength == 10)) { // Check for effect switched off on the ZOOM G5.
       uint8_t index = sxdata[5];
       if (index < 6) ZG3_FX[index] =  ZG3_FX[index] & B11111110; //Make a zero of bit 1 - this will switch off the effect
       load_current_page(false);
@@ -95,7 +97,7 @@ void check_PC_in_ZG3(byte channel, byte program) {  // Check incoming PC message
 void ZG3_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
 
   // Check if it is a ZOOM G3
-  if ((sxdata[6] == 0x5A) && (sxdata[7] == 0x00) && (ZG3_detected == false)) {
+  if ((sxdata[6] == ZG3_MODEL_NUMBER) && (sxdata[7] == 0x00) && (ZG3_detected == false)) {
     ZG3_detected = true;
     show_status_message("Zoom G3 detected");
     ZG3_device_id = sxdata[2]; //Byte 2 contains the correct device ID
@@ -109,7 +111,7 @@ void ZG3_identity_check(const unsigned char* sxdata, short unsigned int sxlength
 }
 
 void write_ZG3(uint8_t message) {
-  uint8_t sysexmessage[6] = {0xF0, 0x52, ZG3_device_id, 0x5A, message, 0xF7};
+  uint8_t sysexmessage[6] = {0xF0, 0x52, ZG3_device_id, ZG3_MODEL_NUMBER, message, 0xF7};
   //ZG3_check_sysex_delay();
   if (ZG3_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(6, sysexmessage);
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(5, sysexmessage);
@@ -119,7 +121,7 @@ void write_ZG3(uint8_t message) {
 }
 
 void ZG3_request_patch(uint8_t number) { //Will request the complete patch information from the Zoom G3 (will receive 120 bytes as an answer)
-  uint8_t sysexmessage[9] = {0xF0, 0x52, ZG3_device_id, 0x5A, 0x09, 0x00, 0x00, number, 0xF7};
+  uint8_t sysexmessage[9] = {0xF0, 0x52, ZG3_device_id, ZG3_MODEL_NUMBER, 0x09, 0x00, 0x00, number, 0xF7};
   //ZG3_check_sysex_delay();
   if (ZG3_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(9, sysexmessage);
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(8, sysexmessage);
@@ -129,7 +131,7 @@ void ZG3_request_patch(uint8_t number) { //Will request the complete patch infor
 }
 
 void ZG3_set_FX_state(uint8_t number, uint8_t state) { //Will set an effect on or off
-  uint8_t sysexmessage[10] = {0xF0, 0x52, ZG3_device_id, 0x5A, 0x31, number, 0x00, state, 0x00, 0xF7}; // F0 52 00 5A 31 00 (FX) 00 01 (on) 00 F7
+  uint8_t sysexmessage[10] = {0xF0, 0x52, ZG3_device_id, ZG3_MODEL_NUMBER, 0x31, number, 0x00, state, 0x00, 0xF7}; // F0 52 00 5A 31 00 (FX) 00 01 (on) 00 F7
   //ZG3_check_sysex_delay();
   if (ZG3_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(10, sysexmessage);
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(9, sysexmessage);
@@ -139,7 +141,7 @@ void ZG3_set_FX_state(uint8_t number, uint8_t state) { //Will set an effect on o
 }
 
 void ZG3_send_bpm() { //Will change the bpm to the specified value
-  uint8_t sysexmessage[10] = {0xF0, 0x52, ZG3_device_id, 0x5A, 0x31, 0x06, 0x08, (uint8_t)(bpm % 128), (uint8_t)(bpm / 128), 0xF7}; // F0 52 00 5A 31 06 08 7A 01 F7
+  uint8_t sysexmessage[10] = {0xF0, 0x52, ZG3_device_id, ZG3_MODEL_NUMBER, 0x31, 0x06, 0x08, (uint8_t)(bpm % 128), (uint8_t)(bpm / 128), 0xF7}; // F0 52 00 5A 31 06 08 7A 01 F7
   //ZG3_check_sysex_delay();
   if (ZG3_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(10, sysexmessage);
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(9, sysexmessage);
@@ -171,7 +173,7 @@ void ZG3_do_after_patch_selection() {
   Current_device = ZG3;
   update_LEDS = true;
   update_main_lcd = true;
-  update_parameter_lcds = PARAMETERS;
+  update_switch_lcds = PARAMETERS;
   //ZG3_request_guitar_switch_states();
   //EEPROM.write(EEPROM_ZG3_PATCH_NUMBER, ZG3_patch_number);
 
@@ -270,13 +272,13 @@ void ZG3_FX_set_type_and_state(uint8_t Sw) {
     uint8_t Colour; // The colour for this effect.
   };
 
-#define ZG3_NUMBER_OF_FX 108
+#define ZG3_NUMBER_OF_FX 120
 
   const PROGMEM ZG3_FX_type_struct ZG3_FX_types[ZG3_NUMBER_OF_FX] = {
     {"M-FILTER", FX_FILTER_COLOUR}, // 01
     {"THE VIBE", FX_MODULATE_COLOUR}, // 02
     {"Z-ORGAN", FX_MODULATE_COLOUR}, // 03
-    {"PEDAL VX", FX_FILTER_COLOUR}, // 04
+    {"SLICER", FX_FILTER_COLOUR}, // 04
     {"PHASE DELAY", FX_DELAY_COLOUR}, // 05
     {"FILTER DELAY", FX_DELAY_COLOUR}, // 06
     {"PITCH DELAY", FX_DELAY_COLOUR}, // 07
@@ -330,7 +332,7 @@ void ZG3_FX_set_type_and_state(uint8_t Sw) {
     {"TAPE ECHO", FX_DELAY_COLOUR}, // 55
     {"MOD DELAY", FX_DELAY_COLOUR}, // 56
     {"ANALOG DELAY", FX_DELAY_COLOUR}, // 57
-    {"REV. DLY", FX_DELAY_COLOUR}, // 58
+    {"REVERSE DELAY", FX_DELAY_COLOUR}, // 58
     {"MULTI TAP DELAY", FX_DELAY_COLOUR}, // 59
     {"DYNA DELAY", FX_DELAY_COLOUR}, // 60
     {"HALL", FX_REVERB_COLOUR}, // 61
@@ -381,6 +383,18 @@ void ZG3_FX_set_type_and_state(uint8_t Sw) {
     {"HD REVERB", FX_AMP_COLOUR}, // 106
     {"FLANGER", FX_MODULATE_COLOUR}, // 107
     {"---", 0}, // 108
+    {"TONE CITY", FX_AMP_COLOUR}, // 109
+    {"B-BREAKER", FX_AMP_COLOUR}, // 110
+    {"BGN DRIVE", FX_AMP_COLOUR}, // 111
+    {"DELUXE R", FX_AMP_COLOUR}, // 112
+    {"ALIEN", FX_AMP_COLOUR}, // 113
+    {"REVO 1", FX_AMP_COLOUR}, // 114
+    {"CAR DRIVE", FX_AMP_COLOUR}, // 115
+    {"MS 1959", FX_AMP_COLOUR}, // 116
+    {"VX JIMI", FX_AMP_COLOUR}, // 117
+    {"118", 0}, // 118
+    {"119", 0}, // 119
+    {"120", 0}, // 120
   };
 
   uint8_t FX_type = ZG3_FX[index] >> 1; //The FX type is stored in bit 1-7.

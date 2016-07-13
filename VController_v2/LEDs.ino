@@ -129,10 +129,14 @@ void update_LEDs() {
         if (GP10_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
         else {
           if (GP10_patch_number == SP[s].PP_number) {
-            if (GP10_on) show_colour(s, SP[s].Colour);
+            if (GP10_on) {
+              show_colour(s, SP[s].Colour);
+            }
             else show_colour(s, SP[s].Colour + 10); // Show off colour
           }
-          else show_colour(s, 0);
+          else {
+            show_colour(s, 0);
+          }
         }
         break;
       case GP10_BANK_UP:
@@ -274,9 +278,9 @@ void update_LEDs() {
       default:
         show_colour(s, 0); // Show nothing with undefined LED
     }
-
   }
   LEDs.show();
+  //DEBUGMSG("LEDs updated");
 }
 
 void show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specified LED to the specified colour
@@ -285,18 +289,23 @@ void show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specif
     if (colour_number < 100) { // Check if it is not a flashing LED
       // Turn the LED on
       LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
+      Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
     }
-    else if (LED_flashing_state_on == true) {
-      // Turn the LED on
-      LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
-    }
-    else {
-      // Turn the LED off
-      LEDs.setPixelColor(LED_order[LED_number], 0, 0, 0);
+    else { // UPdate flashing LED
+      if (LED_flashing_state_on == true) {
+        // Turn the LED on
+        LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
+        Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
+      }
+      else {
+        // Turn the LED off
+        LEDs.setPixelColor(LED_order[LED_number], 0, 0, 0);
+        Set_virtual_LED_colour(LED_number, 0); // Update the virtual LEDs on the LCD as well
+      }
     }
   }
   else {
-    // Invalid colour: show mwssage and give error
+    // Invalid colour: show message and give error
     LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[10].green, colours[10].red, colours[10].blue));
     DEBUGMSG("Invalid colour (number " + String(number_fixed) + ") on LED " + String(LED_number));
   }
@@ -322,3 +331,4 @@ void flash_LEDs() {
     update_LEDS = true; // Get the LEDs to update
   }
 }
+

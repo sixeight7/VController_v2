@@ -13,12 +13,23 @@ bool no_device_check = false; // This check should not occur right after a patch
 
 uint8_t Current_MIDI_port; // The MIDI port that is being read.
 bool bank_selection_active = false;
-uint8_t current_parameter = 255; // The parameter that is being read (pointer in the SP array)
+uint8_t Current_switch = 255; // The parameter that is being read (pointer in the SP array)
 
 // Setup MIDI ports. The USB port is set from the Arduino menu.
+struct MySettings : public midi::DefaultSettings
+ {
+    //static const bool UseRunningStatus = false; // Messes with my old equipment!
+    //static const bool Use1ByteParsing = false; // More focus on reading messages - will this help the equipment from stopping with receiving data?
+    static const unsigned SysExMaxSize = 127; // Change sysex buffersize - Zoom G3 sends packets up to 120 bytes
+ };
+MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial1, MIDI1, MySettings); // Enables serial1 port for MIDI communication with custom settings
+MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial2, MIDI2, MySettings); // Enables serial2 port for MIDI communication with custom settings
+MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial3, MIDI3, MySettings); // Enables serial3 port for MIDI communication with custom settings
+/*
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI1); //Enables serial1 port for MIDI communication!
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial2, MIDI2); //Enables serial2 port for MIDI communication!
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial3, MIDI3); //Enables serial3 port for MIDI communication!
+*/
 
 void setup_MIDI_common()
 {
