@@ -1,7 +1,10 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // Configuration of the VController
 
-#define NUMBER_OF_PAGES 10
+#define NUMBER_OF_PAGES 11
 #define NUMBER_OF_SWITCHES 16
+#define NUMBER_OF_EXTERNAL_SWITCHES 8
 #define NUMBER_OF_COMMANDS 3 // The number of commands one button can execute
 
 struct Cmd_struct {
@@ -25,11 +28,22 @@ struct Page_struct {
   Switch_struct Switch[NUMBER_OF_SWITCHES];
 };
 
-uint8_t Current_page = 0; // Start in standbye
-uint8_t  previous_page = 0;
+uint8_t Current_page = 0;
+uint8_t Previous_page = 0;
 
 // Configuration of the pedal in PROGMEM
 // All RELSEL and ASSIGN commands only work in first position!
+#define PAGE_UNIT_OFF 0
+#define PAGE_MODE_SELECT 1
+#define PAGE_GP10_RELSEL 2
+#define PAGE_GP10_PARAMETER 3
+#define PAGE_GR55_RELSEL 4
+#define PAGE_GR55_PARAMETER 5
+#define PAGE_VG99_RELSEL 6
+#define PAGE_VG99_PARAMETER 7
+#define PAGE_COMBO1 8
+#define PAGE_COMBO2 9
+#define PAGE_ZG3_RELSEL 10
 
 const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
   // ******************************* PAGE 00 *************************************************
@@ -56,7 +70,29 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
   },
   // ******************************* PAGE 01 *************************************************
   { // Page settings:
-    "           GP-10", // Page title
+    "MODE SELECT    ", // Page title: Unit is off
+    { // Switch settings:
+      {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 01 **
+      {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 02 **
+      {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 03 **
+      {{ {SELECT_PAGE, PAGE_COMBO2}, {NOTHING}, {NOTHING} }}, // ** Switch 04 **
+      {{ {SELECT_PAGE, PAGE_GP10_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 05 **
+      {{ {SELECT_PAGE, PAGE_GR55_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 06 **
+      {{ {SELECT_PAGE, PAGE_VG99_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 07 **
+      {{ {SELECT_PAGE, PAGE_COMBO1}, {NOTHING}, {NOTHING} }}, // ** Switch 08 **
+      {{ {SELECT_PAGE, PAGE_GP10_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 09 **
+      {{ {SELECT_PAGE, PAGE_GR55_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 10 **
+      {{ {SELECT_PAGE, PAGE_VG99_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 11 **
+      {{ {SELECT_PAGE, PAGE_ZG3_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
+      {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
+      {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {STANDBYE}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+    }
+  },
+  // ******************************* PAGE 02 *************************************************
+  { // Page settings:
+    "GP-10", // Page title
     { // Switch settings:
       {{ {GP10_RELSEL, 1, 10}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 01 **
       {{ {GP10_RELSEL, 2, 10}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 02 **
@@ -72,13 +108,13 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {GP10_BANK_DOWN, 10}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {GP10_BANK_UP, 10}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 3}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 2}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_GP10_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   },
-  // ******************************* PAGE 02 *************************************************
+  // ******************************* PAGE 03 *************************************************
   { // Page settings:
-    "       PAR GP-10", // Page title
+    "PAR GP-10", // Page title
     { // Switch settings:
       {{ {GP10_ASSIGN, 1, 21}, {NOTHING}, {NOTHING} }}, // ** Switch 01 **
       {{ {GP10_ASSIGN, 2, 22}, {NOTHING}, {NOTHING} }}, // ** Switch 02 **
@@ -94,13 +130,13 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 4}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 1}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_GP10_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   },
-  // ******************************* PAGE 03 *************************************************
+  // ******************************* PAGE 04 *************************************************
   { // Page settings:
-    "           GR-55", // Page title
+    "GR-55", // Page title
     { // Switch settings:
       {{ {GR55_RELSEL, 1, 9}, {GP10_MUTE}, {VG99_MUTE} }}, // ** Switch 01 **
       {{ {GR55_RELSEL, 2, 9}, {GP10_MUTE}, {VG99_MUTE} }}, // ** Switch 02 **
@@ -116,13 +152,13 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {GR55_BANK_DOWN, 9}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {GR55_BANK_UP, 9}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 4}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_GR55_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   },
-  // ******************************* PAGE 04 *************************************************
+  // ******************************* PAGE 05 *************************************************
   { // Page settings:
-    "       PAR GR-55", // Page title
+    "PAR GR-55", // Page title
     { // Switch settings:
       {{ {GR55_ASSIGN, 6, 26}, {NOTHING}, {NOTHING} }}, // ** Switch 01 **
       {{ {GR55_ASSIGN, 7, 27}, {NOTHING}, {NOTHING} }}, // ** Switch 02 **
@@ -138,13 +174,13 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 6}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 3}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_GR55_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   },
-  // ******************************* PAGE 05 *************************************************
+  // ******************************* PAGE 06 *************************************************
   { // Page settings:
-    "           VG-99", // Page title
+    "VG-99", // Page title
     { // Switch settings:
       {{ {VG99_RELSEL, 1, 10}, {GP10_MUTE}, {GR55_MUTE} }}, // ** Switch 01 **
       {{ {VG99_RELSEL, 2, 10}, {GP10_MUTE}, {GR55_MUTE} }}, // ** Switch 02 **
@@ -160,13 +196,13 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {VG99_BANK_DOWN, 10}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {VG99_BANK_UP, 10}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 7}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 6}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_VG99_PARAMETER}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   },
-  // ******************************* PAGE 06 *************************************************
+  // ******************************* PAGE 07 *************************************************
   { // Page settings:
-    "       PAR VG-99", // Page title
+    "PAR VG-99", // Page title
     { // Switch settings:
       {{ {FC300_CTL1}, {NOTHING}, {NOTHING} }}, // ** Switch 01 **
       {{ {FC300_CTL2}, {NOTHING}, {NOTHING} }}, // ** Switch 02 **
@@ -182,12 +218,12 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 10 **
       {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // ** Switch 11 **
-      {{ {SELECT_PAGE, 7}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
-      {{ {SELECT_PAGE, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
+      {{ {SELECT_PAGE, PAGE_VG99_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
     }
-  },// ******************************* PAGE 07 *************************************************
+  },// ******************************* PAGE 08 *************************************************
   { // Page settings:
-    "           COMBO", // Page title
+    "GP+GR", // Page title
     { // Switch settings:
       {{ {GP10_RELSEL, 1, 5}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 01 **
       {{ {GP10_RELSEL, 2, 5}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 02 **
@@ -203,12 +239,12 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {GP10_BANK_DOWN, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {GP10_BANK_UP, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 9}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 8}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_COMBO2}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
-  },// ******************************* PAGE 08 *************************************************
+  },// ******************************* PAGE 09 *************************************************
   { // Page settings:
-    "          COMBO2", // Page title
+    "GPVGGR", // Page title
     { // Switch settings:
       {{ {GP10_RELSEL, 1, 4}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 01 **
       {{ {GP10_RELSEL, 2, 4}, {GR55_MUTE}, {VG99_MUTE} }}, // ** Switch 02 **
@@ -224,12 +260,12 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {COMBI_BANK_DOWN, 4}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {COMBI_BANK_UP, 4}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 9}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 7}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, PAGE_COMBO1}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
-  },// ******************************* PAGE 09 *************************************************
+  },// ******************************* PAGE 10 *************************************************
   { // Page settings:
-    "           ZM G3", // Page title: Zoom G3
+    "ZM G3", // Page title: Zoom G3
     { // Switch settings:
       {{ {ZG3_RELSEL, 1, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 01 **
       {{ {ZG3_RELSEL, 2, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 02 **
@@ -245,12 +281,27 @@ const PROGMEM Page_struct Page[NUMBER_OF_PAGES] = {
       {{ {TAP_TEMPO}, {NOTHING}, {NOTHING} }}, // ** Switch 12 **
       {{ {ZG3_BANK_DOWN, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 13 **
       {{ {ZG3_BANK_UP, 5}, {NOTHING}, {NOTHING} }}, // ** Switch 14 **
-      {{ {SELECT_PAGE, 1}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
-      {{ {SELECT_PAGE, 1}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
+      {{ {SELECT_NEXT_DEVICE}, {NOTHING}, {NOTHING} }}, // ** Switch 15 **
+      {{ {SELECT_PAGE, GP10_RELSEL}, {NOTHING}, {NOTHING} }}, // ** Switch 16 **
     }
   }
 };
 
+//External expression pedals - what data do they send?
+uint8_t Exp_CC_number[4] = {7, 30, 31, 32}; // The cc numbers that are being sent.
+uint8_t Exp_CC_channel[4] = {1, 1, 1, 1}; // The MIDI channel of the cc messages
+uint8_t Exp_CC_port[4] = {ALL_PORTS, ALL_PORTS, ALL_PORTS, ALL_PORTS}; // the port of the cc messages
+
+/*const PROGMEM Switch_struct Ext_switch[NUMBER_OF_EXTERNAL_SWITCHES] = {
+  {{ {GP10_PARAMETER, 1, RANGE, 0, 10}, {NOTHING}, {NOTHING} }}, // External switch 1 and Expression pedal 1
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 2
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 3 and Expression pedal 2
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 4
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 5 and Expression pedal 3
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 6
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 7 and Expression pedal 4
+  {{ {NOTHING}, {NOTHING}, {NOTHING} }}, // External switch 8
+};*/
 
 boolean switch_state[NUMBER_OF_PAGES][NUMBER_OF_SWITCHES];
 
@@ -283,5 +334,6 @@ struct SP_struct {
   uint8_t Target_byte6;
 };
 
-SP_struct SP[NUMBER_OF_SWITCHES];  // SP = Switch Parameters
+// Reserve the memory for the switches on the page and the external switches
+SP_struct SP[NUMBER_OF_SWITCHES + NUMBER_OF_EXTERNAL_SWITCHES];  // SP = Switch Parameters
 

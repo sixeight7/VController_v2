@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // Setup of input ports of switches.
 // Check for switch pressed and output the result in the switch_pressed, switch_released or switch_long_pressed variable.
 
@@ -7,11 +9,11 @@
 #define SWITCH_UPDATE_TIMER_LENGTH 10 // Update switches every 10 ms
 #define LONG_PRESS_TIMER_LENGTH 1000 // Timer used for detecting long-pressing switch. Time is in milliseconds
 #define EXTRA_LONG_PRESS_TIMER_LENGTH 3000
-#define EXPR_PEDAL_TIMER_LENGTH 50 // Timer to limit the data from the expression pedals
+#define EXPR_PEDAL_TIMER_LENGTH 25 // Timer to limit the data from the expression pedals
 unsigned long Switch_update_timer = 0;
 unsigned long Long_press_timer = 0;
 unsigned long Extra_long_press_timer = 0;
-unsigned long Expr_pedal_timer = 0; 
+unsigned long Expr_pedal_timer = 0;
 
 // ***************************** Hardware settings *****************************
 // Define pin numbers
@@ -29,18 +31,19 @@ unsigned long Expr_pedal_timer = 0;
 #define SWITCH_COL3 11 // Column 3 (pin 11) is connected to the other side of switch 3,7,11 and 15
 #define SWITCH_COL4 6  // Column 4 (pin 6) is connected to the other side of switch 4,8,12 and 16
 
+#define NUMBER_OF_EXPRESSION_PEDALS 4
 #define SWITCH_EXT1 20  // Tip external input jack 1/2
 #define SWITCH_EXT2 21  // Ring external input jack 1/2
-#define EXPR_PED12 6 //Pin D20 is also A6
+#define EXPR_PED1 6 //Pin D20 is also A6
 #define SWITCH_EXT3 22  // Tip external input jack 3/4
 #define SWITCH_EXT4 23  // Ring external input jack 3/4
-#define EXPR_PED34 8 //Pin D22 is also A8
+#define EXPR_PED2 8 //Pin D22 is also A8
 #define SWITCH_EXT5 15  // Tip external input jack 5/6
 #define SWITCH_EXT6 16  // Ring external input jack 5/6
-#define EXPR_PED56 1 //Pin D15 is also A1
+#define EXPR_PED3 1 //Pin D15 is also A1
 #define SWITCH_EXT7 27  // Tip external input jack 7/8
 #define SWITCH_EXT8 28  // Ring external input jack 7/8
-#define EXPR_PED78 16 //Pin D27 is also A16
+#define EXPR_PED4 16 //Pin D27 is also A16
 
 //Pin 17 reserved for Neopixel LEDs
 //Pin 18 and 19 reserved for I2C bus (LCD)
@@ -51,11 +54,15 @@ uint8_t switch_pressed = 0; //Variable set when switch is pressed
 uint8_t switch_released = 0; //Variable set when switch is released
 uint8_t switch_long_pressed = 0; //Variable set when switch is pressed long (check LONG_PRESS_TIMER_LENGTH for when this will happen)
 uint8_t switch_extra_long_pressed = 0; //Variable set when switch is pressed long (check LONG_PRESS_TIMER_LENGTH for when this will happen)
+uint8_t expr_ped_changed = 0;
 
-uint16_t expr_ped12_val = 0; // Value for storing value expr. pedal 1/2
-uint16_t expr_ped34_val = 0;
-uint16_t expr_ped56_val = 0;
-uint16_t expr_ped78_val = 0;
+// Variables for expression pedals
+uint8_t expr_ped_pin[NUMBER_OF_EXPRESSION_PEDALS] = {EXPR_PED1, EXPR_PED2, EXPR_PED3, EXPR_PED4};
+bool expr_ped_type[NUMBER_OF_EXPRESSION_PEDALS] = {Ext12type, Ext34type, Ext56type, Ext78type};
+uint16_t exp_ped_min[NUMBER_OF_EXPRESSION_PEDALS] = {1023, 1023, 1023, 1023}; // System is self calibrating
+uint16_t exp_ped_max[NUMBER_OF_EXPRESSION_PEDALS] = {0, 0, 0, 0};
+//uint16_t expr_ped_prev_state[NUMBER_OF_EXPRESSION_PEDALS] = {0, 0, 0, 0}; // Value for storing states
+uint16_t expr_ped_prev_value[NUMBER_OF_EXPRESSION_PEDALS] = {0, 0, 0, 0}; // Value for storing values
 
 uint8_t switch_long_pressed_memory = 0;
 uint8_t active_column = 1; // Which switch column is being read?
@@ -124,6 +131,7 @@ void setup_switch_check()
   else { // Expression pedal connected
     pinMode(SWITCH_EXT2, OUTPUT); // We want to put a plus voltage on the ring of the connector
     digitalWrite(SWITCH_EXT2, HIGH);
+    pinMode(SWITCH_EXT1, INPUT_PULLUP); // Enable internal pullup, so the value is static when no pedal is connected
   }
 
   // Setup of external switch 3/4
@@ -139,6 +147,7 @@ void setup_switch_check()
   else { // Expression pedal connected
     pinMode(SWITCH_EXT4, OUTPUT); // We want to put a plus voltage on the ring of the connector
     digitalWrite(SWITCH_EXT4, HIGH);
+    pinMode(SWITCH_EXT3, INPUT_PULLUP); // Enable internal pullup, so the value is static when no pedal is connected
   }
 
   // Setup of external switch 5/6
@@ -154,6 +163,7 @@ void setup_switch_check()
   else { // Expression pedal connected
     pinMode(SWITCH_EXT6, OUTPUT); // We want to put a plus voltage on the ring of the connector
     digitalWrite(SWITCH_EXT6, HIGH);
+    pinMode(SWITCH_EXT5, INPUT_PULLUP); // Enable internal pullup, so the value is static when no pedal is connected
   }
 
   // Setup of external switch 7/8
@@ -169,6 +179,7 @@ void setup_switch_check()
   else { // Expression pedal connected
     pinMode(SWITCH_EXT8, OUTPUT); // We want to put a plus voltage on the ring of the connector
     digitalWrite(SWITCH_EXT8, HIGH);
+    pinMode(SWITCH_EXT7, INPUT_PULLUP); // Enable internal pullup, so the value is static when no pedal is connected
   }
 
   Expr_pedal_timer = millis(); // Set timer for the expression pedals
@@ -178,12 +189,12 @@ void setup_switch_check()
 void main_switch_check()
 {
   if (millis() - Switch_update_timer > SWITCH_UPDATE_TIMER_LENGTH) {
-    update_switches();
+    SCH_update_switches();
     Switch_update_timer = millis(); // Reset timer for the switch update
   }
 }
 
-void update_switches()
+void SCH_update_switches()
 {
   // Run through the switch columns, One column is being activated on every run of this routine.
   // Check if a switch is pressed of released and set the switch_pressed and switch_released variable accordingly
@@ -427,14 +438,35 @@ void update_switches()
   }
 
   // Check expression pedals
+  expr_ped_changed = 0;
   if (millis() - Expr_pedal_timer > EXPR_PEDAL_TIMER_LENGTH) {
 
-    if (Ext34type == PEDAL) {
-      expr_ped34_val = analogRead(EXPR_PED34);
-      //show_status_message("PEDAL " + String(expr_ped34_val));
+    for (uint8_t n = 0; n < NUMBER_OF_EXPRESSION_PEDALS; n++) {
+      SCH_update_expr_pedal(n);
     }
 
     Expr_pedal_timer = millis(); // Reset timer for the expression pedals
   }
 }
 
+void SCH_update_expr_pedal(uint8_t number) {
+  if (expr_ped_type[number] == PEDAL) {
+    uint16_t new_state = analogRead(expr_ped_pin[number]);
+
+    //if (abs(expr_ped_prev_state[number] - new_state) > 3) { // Have we read a new state?
+      if (new_state < exp_ped_min[number]) exp_ped_min[number] = new_state;
+      if (new_state > exp_ped_max[number]) exp_ped_max[number] = new_state;
+
+      uint16_t new_value = map(new_state, exp_ped_min[number], exp_ped_max[number], 0, 137); // Map to 137 instead of 127, so we have five on either side, so we always reach min and max value.
+      if (new_value > 132) new_value = 132;
+      if (new_value < 5) new_value = 5;
+      if ((new_value != expr_ped_prev_value[number]) && (exp_ped_max[number] - exp_ped_min[number] > 100)) { // check for calibration
+        //LCD_show_status_message("PDL" + String(number + 1) + ":" + String(new_value) + " - " + String(new_state));
+        //expr_ped_prev_state[number] = new_state;
+        expr_ped_prev_value[number] = new_value;
+        expr_ped_changed = number + 1; // Signal switch control that new value is updated
+        Expr_value = new_value - 5; // Set the expression value variable
+      }
+    //}
+  }
+}

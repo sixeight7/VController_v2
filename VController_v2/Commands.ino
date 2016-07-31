@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 //The commands specified on this page can be used on the Config page.
 
 //Possible switch types:
@@ -9,6 +11,7 @@
 #define COMBI_BANK_DOWN 04
 #define TAP_TEMPO 05
 #define STANDBYE 06
+#define SELECT_NEXT_DEVICE 07
 
 //10 - 19 General MIDI commands
 #define MIDI_PC 10   // Command: {MIDI_PC, Program, Channel, Port}
@@ -30,8 +33,8 @@ String GP10_patch_name = "                "; // Patchname displayed in the main 
 #define GR55_RELSEL 31 //Command: {GR55_RELSEL, number, bank_size}
 #define GR55_BANK_UP 32 //Command: {GR55_BANK_UP, bank_size}
 #define GR55_BANK_DOWN 33 //Command: {GR55_BANK_DOWN, bank_size}
-#define GR55_PARAMETER 34 //Command: {GP10_PARAMETER, number, MOMENTARY/TOGGLE/TRISTATE, VALUE_ON, VALUE_OFF}
-#define GR55_ASSIGN 35 //Command: {GP10_ASSIGN, assign_number, cc_number}
+#define GR55_PARAMETER 34 //Command: {GR55_PARAMETER, number, MOMENTARY/TOGGLE/TRISTATE, VALUE_ON, VALUE_OFF}
+#define GR55_ASSIGN 35 //Command: {GR55_ASSIGN, assign_number, cc_number}
 #define GR55_MUTE 36 //Command: {GR55_MUTE} - will mute the GR55, unless GR55_always_on is true
 String GR55_patch_name = "                "; // Patchname displayed in the main display
 
@@ -40,12 +43,12 @@ String GR55_patch_name = "                "; // Patchname displayed in the main 
 #define VG99_RELSEL 41 //Command: {VG99_RELSEL, number, bank_size}
 #define VG99_BANK_UP 42 //Command: {VG99_BANK_UP, bank_size}
 #define VG99_BANK_DOWN 43 //Command: {VG99_BANK_DOWN, bank_size}
-#define VG99_PARAMETER 44 //Command: {GP10_PARAMETER, number, MOMENTARY/TOGGLE/TRISTATE, VALUE_ON, VALUE_OFF} // number = part * 30 + parameter_number
-#define VG99_ASSIGN 45 //Command: {GP10_ASSIGN, assign_number, cc_number}
+#define VG99_PARAMETER 44 //Command: {VG99_PARAMETER, number, MOMENTARY/TOGGLE/TRISTATE, VALUE_ON, VALUE_OFF} // number = part * 30 + parameter_number
+#define VG99_ASSIGN 45 //Command: {VG99_ASSIGN, assign_number, cc_number}
 #define VG99_MUTE 46 //Command: {VG99_MUTE} - will mute the VG99, unless VG99_always_on is true
 String VG99_patch_name = "                "; // Patchname displayed in the main display
 
-//50 - 59: Boss GP10 types
+//50 - 59: Zoom G3 types
 #define ZG3_PATCH 50  //Command: {ZG3_PATCH, number} // Select fixed patch number.
 #define ZG3_RELSEL 51 //Command: {ZG3_RELSEL, number, bank_size} // Select patch in bank
 #define ZG3_BANK_UP 52 //Command: {ZG3_BANK_UP, bank_size}
@@ -59,6 +62,7 @@ String ZG3_patch_name = "                "; // Patchname displayed in the main d
 #define TRISTATE 2
 #define FOURSTATE 3
 #define FIVESTATE 4
+#define RANGE 5 // For use with expression pedal
 
 // Ports you can use - because they follow binary rules, you can also send commands to combinations of ports:
 // To send to MIDI port 1, 2 and 3 - specify port as 1 + 2 + 4 = 7!
@@ -66,6 +70,7 @@ String ZG3_patch_name = "                "; // Patchname displayed in the main d
 #define MIDI2_PORT 2
 #define MIDI3_PORT 4
 #define USBMIDI_PORT 8
+#define ALL_PORTS 15
 
 // VG99 commands
 #define FC300_CTL1 VG99_ASSIGN, 17, 1

@@ -1,6 +1,8 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // ******************************** MIDI common functions ********************************
 // Setup of usbMIDI and Serial midi in and out
-// Specific messages are listed under MIDI_GP10, MIDI_GR55 and MIDI_VG99
+// Specific messages are listed under MIDI_GP10, MIDI_GR55, MIDI_VG99 and MIDI_ZG3
 
 // Change buffersize of usbMIDI:
 // Edit on Mac: /Applications/Arduino.app/Contents/Resources/Java/hardware/teensy/avr/cores/teensy3/usb_midi.h in Teksteditor and change USB_MIDI_SYSEX_MAX 127
@@ -83,8 +85,8 @@ void main_MIDI_common()
   Current_MIDI_port = MIDI3_PORT;
   MIDI3.read();
 
-  check_for_roland_devices();  // Check actively if any roland devices are out there
-  Check_sysex_watchdog(); // check if the watchdog has not expired
+  MIDI_check_for_devices();  // Check actively if any devices are out there
+  PAGE_check_sysex_watchdog(); // check if the watchdog has not expired
 }
 
 // ******************************** MIDI In section ********************************************
@@ -94,12 +96,12 @@ void main_MIDI_common()
 
 void OnNoteOn(byte channel, byte note, byte velocity)
 {
-  bass_mode_note_on(channel, note, velocity);
+  SCO_bass_mode_note_on(channel, note, velocity);
 }
 
 void OnNoteOff(byte channel, byte note, byte velocity)
 {
-  bass_mode_note_off(channel, note, velocity);
+  SCO_bass_mode_note_off(channel, note, velocity);
 }
 
 void OnProgramChange(byte channel, byte program)
@@ -114,31 +116,17 @@ void OnProgramChange(byte channel, byte program)
 void OnControlChange(byte channel, byte control, byte value)
 {
   DEBUGMSG("CC #" + String(control) + " Value:" + String(value) + " received on channel " + String(channel)); // Show on serial debug screen
-
-  // Check the source by checking the channel
-  if (channel == GP10_MIDI_channel) { // GP10 outputs a control change message
-
-  }
-
-  if (channel == GR55_MIDI_channel) { // GR55 outputs a control change message
-    if (control == 0) {
-      GR55_CC01 = value;
-    }
-  }
-
-  if (channel == VG99_MIDI_channel) { // GR55 outputs a control change message
-    if (control == 0) {
-      VG99_CC01 = value;
-    }
-  }
-
+  check_CC_in_GP10(channel, control, value);
+  check_CC_in_GR55(channel, control, value);
+  check_CC_in_VG99(channel, control, value);
+  check_CC_in_ZG3(channel, control, value);
 }
 
 void OnSysEx(const unsigned char* sxdata, short unsigned int sxlength, bool sx_comp)
 {
   //MIDI1.sendSysEx(sxlength, sxdata); // MIDI through usb to serial
   //MIDI2.sendSysEx(sxlength, sxdata); // MIDI through usb to serial
-  debug_sysex(sxdata, sxlength, "in-USB   ");
+  MIDI_debug_sysex(sxdata, sxlength, "in-USB   ");
 
   if ((sxdata[1] == 0x41) && sx_comp) { //Check if it is a message from a Roland device
     check_SYSEX_in_GP10(sxdata, sxlength);
@@ -153,14 +141,14 @@ void OnSysEx(const unsigned char* sxdata, short unsigned int sxlength, bool sx_c
   }
 
   if (sxdata[1] == 0x7E) { //Check if it is a Universal Non-Real Time message
-    check_SYSEX_in_universal(sxdata, sxlength);
+    MIDI_check_SYSEX_in_universal(sxdata, sxlength);
   }
 }
 
 void OnSerialSysEx(byte *sxdata, unsigned sxlength)
 {
   //usbMIDI.sendSysEx(sxlength, sxdata); // MIDI through serial to usb
-  debug_sysex(sxdata, sxlength, "in-serial" + String(Current_MIDI_port));
+  MIDI_debug_sysex(sxdata, sxlength, "in-serial" + String(Current_MIDI_port));
 
   if (sxdata[1] == 0x41) { //Check if it is a message from a Roland device
     check_SYSEX_in_GP10(sxdata, sxlength);
@@ -174,35 +162,35 @@ void OnSerialSysEx(byte *sxdata, unsigned sxlength)
   }
 
   if (sxdata[1] == 0x7E) { //Check if it is a Universal Non-Real Time message
-    check_SYSEX_in_universal(sxdata, sxlength);
+    MIDI_check_SYSEX_in_universal(sxdata, sxlength);
   }
 }
 
 
 // General MIDI commands:
 // Send Program Change message
-void Send_PC(uint8_t Program, uint8_t Channel, uint8_t Port) {
+void MIDI_send_PC(uint8_t Program, uint8_t Channel, uint8_t Port) {
   if (Port & USBMIDI_PORT) usbMIDI.sendProgramChange(Program, Channel);
   if (Port & MIDI1_PORT) MIDI1.sendProgramChange(Program, Channel);
   if (Port & MIDI2_PORT) MIDI2.sendProgramChange(Program, Channel);
   if (Port & MIDI3_PORT) MIDI3.sendProgramChange(Program, Channel);
 }
 
-void Send_CC(uint8_t Controller, uint8_t Value, uint8_t Channel, uint8_t Port) {
+void MIDI_send_CC(uint8_t Controller, uint8_t Value, uint8_t Channel, uint8_t Port) {
   if (Port & USBMIDI_PORT) usbMIDI.sendControlChange(Controller, Value, Channel);
   if (Port & MIDI1_PORT) MIDI1.sendControlChange(Controller, Value, Channel);
   if (Port & MIDI2_PORT) MIDI2.sendControlChange(Controller, Value, Channel);
   if (Port & MIDI3_PORT) MIDI3.sendControlChange(Controller, Value, Channel);
 }
 
-void Send_Note_On(uint8_t Note, uint8_t Velocity, uint8_t Channel, uint8_t Port) {
+void MIDI_send_note_on(uint8_t Note, uint8_t Velocity, uint8_t Channel, uint8_t Port) {
   if (Port & USBMIDI_PORT) usbMIDI.sendNoteOn(Note, Velocity, Channel);
   if (Port & MIDI1_PORT) MIDI1.sendNoteOn(Note, Velocity, Channel);
   if (Port & MIDI2_PORT) MIDI2.sendNoteOn(Note, Velocity, Channel);
   if (Port & MIDI3_PORT) MIDI3.sendNoteOn(Note, Velocity, Channel);
 }
 
-void Send_Note_Off(uint8_t Note, uint8_t Velocity, uint8_t Channel, uint8_t Port) {
+void  MIDI_send_note_off(uint8_t Note, uint8_t Velocity, uint8_t Channel, uint8_t Port) {
   if (Port & USBMIDI_PORT) usbMIDI.sendNoteOff(Note, Velocity, Channel);
   if (Port & MIDI1_PORT) MIDI1.sendNoteOff(Note, Velocity, Channel);
   if (Port & MIDI2_PORT) MIDI2.sendNoteOff(Note, Velocity, Channel);
@@ -211,7 +199,7 @@ void Send_Note_Off(uint8_t Note, uint8_t Velocity, uint8_t Channel, uint8_t Port
 
 // *************************************** Common functions ***************************************
 
-void check_SYSEX_in_universal(const unsigned char* sxdata, short unsigned int sxlength) // Check for universal SYSEX message - identity reply
+void MIDI_check_SYSEX_in_universal(const unsigned char* sxdata, short unsigned int sxlength) // Check for universal SYSEX message - identity reply
 {
   // Check if it is an identity reply from Roland
   // There is no check on the second byte (device ID), in case a device has a different device ID
@@ -230,7 +218,7 @@ void check_SYSEX_in_universal(const unsigned char* sxdata, short unsigned int sx
 
 // check for Roland devices
 uint8_t check_device_no = 0;
-void check_for_roland_devices()
+void MIDI_check_for_devices()
 {
   // Check if timer needs to be set
   if (Check4DevicesTimer == 0) {
@@ -244,19 +232,30 @@ void check_for_roland_devices()
     // Send the message to all MIDI ports if no_device_check is not true!!
     if (no_device_check == false) {
       uint8_t sysexbuffer[6] = Anybody_out_there;
-      if (check_device_no == 0 ) usbMIDI.sendSysEx(6, sysexbuffer);
+      if (check_device_no == 0 ) {
+        usbMIDI.sendSysEx(6, sysexbuffer);
+        MIDI_check_all_devices();
+      }
       if (check_device_no == 1 ) MIDI1.sendSysEx(5, sysexbuffer);
       if (check_device_no == 2 ) MIDI2.sendSysEx(5, sysexbuffer);
       if (check_device_no == 3 ) MIDI3.sendSysEx(5, sysexbuffer);
-      debug_sysex(sysexbuffer, 6, "CKout");
+      MIDI_debug_sysex(sysexbuffer, 6, "CKout");
       check_device_no++;
       if (check_device_no > 3) check_device_no = 0;
     }
   }
 }
 
+void MIDI_check_all_devices() {
+  //DEBUGMSG("Check devices");
+  GP10_check_detect();
+  GR55_check_detect();
+  VG99_check_detect();
+  ZG3_check_detect();
+}
+
 //Debug sysex messages by sending them to the serial monitor
-void debug_sysex(const unsigned char* sxdata, short unsigned int sxlength, String my_source) {
+void MIDI_debug_sysex(const unsigned char* sxdata, short unsigned int sxlength, String my_source) {
   if (debug_active) {
     Serial.print(my_source + ":");
     for (uint8_t i = 0; i < sxlength; i++) {
@@ -268,7 +267,7 @@ void debug_sysex(const unsigned char* sxdata, short unsigned int sxlength, Strin
 }
 
 // Calculate the Roland checksum
-uint8_t calc_checksum(uint16_t sum) {
+uint8_t MIDI_calc_Roland_checksum(uint16_t sum) {
   uint8_t checksum = 0x80 - (sum % 0x80);
   if (checksum == 0x80) checksum = 0;
   return checksum;

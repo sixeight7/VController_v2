@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // ******************************** MIDI messages and functions for the Boss GP-10 ********************************
 
 // ********************************* Section 1: GP10 SYSEX messages ********************************************
@@ -45,7 +47,7 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
         GP10_assign_read = false; // Assigns should be read again
         GP10_page_check();
         GP10_do_after_patch_selection();
-        update_switch_lcds = FULL;
+        update_page = FULL;
       }
     }
 
@@ -57,24 +59,23 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 12; count++) {
             SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 12]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = Current_switch + 1;
           if (SP[Current_switch].PP_number == GP10_patch_number) {
             GP10_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
           DEBUGMSG(SP[Current_switch].Label);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
 
         case GP10_PARAMETER:
         case GP10_ASSIGN:
           //case GP10_ASSIGN:
           GP10_read_parameter(sxdata[12], sxdata[13]);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
       }
     }
-    
+
     // Check if it is the patch name (address: 0x20, 0x00, 0x00, 0x00)
     if (address == 0x20000000) {
       GP10_patch_name = "";
@@ -95,7 +96,6 @@ void check_SYSEX_in_GP10(const unsigned char* sxdata, short unsigned int sxlengt
   }
 }
 
-
 void check_PC_in_GP10(byte channel, byte program) {  // Check incoming PC messages from GP10. Called from MIDI:OnProgramChange
 
   // Check the source by checking the channel
@@ -110,23 +110,53 @@ void check_PC_in_GP10(byte channel, byte program) {  // Check incoming PC messag
   }
 }
 
-void GP10_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
-
-  // Check if it is a GP-10
-  if ((sxdata[6] == 0x05) && (sxdata[7] == 0x03) && (GP10_detected == false)) {
-    GP10_detected = true;
-    show_status_message("GP-10 detected  ");
-    GP10_device_id = sxdata[2]; //Byte 2 contains the correct device ID
-    GP10_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
-    DEBUGMSG("GP-10 detected on MIDI port " + String(Current_MIDI_port));
-    request_GP10(GP10_REQUEST_PATCH_NUMBER);
-    request_GP10(GP10_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
-    //write_GP10(GP10_EDITOR_MODE_ON); // Put the GP10 in EDITOR mode - otherwise tuner will not work
-    GP10_do_after_patch_selection();
-    GP10_assign_read = false; // Assigns should be read again
-    load_current_page(true);
+void check_CC_in_GP10(byte channel, byte control, byte value) {  // Check incoming CC messages from GP10.
+  // Check the source by checking the channel
+  if (channel == GP10_MIDI_channel) { // GP10 outputs a control change message
   }
 }
+
+// Detection of GP-10
+
+void GP10_check_detect() { // Started from MIDI/MIDI_check_for_devices()
+  if (GP10_connected) {
+    //DEBUGMSG("GP-10 not detected times " + String(GP10_not_detected));
+    if (GP10_not_detected >= GP10_MAX_NOT_DETECTED) GP10_disconnect();
+    GP10_not_detected++;
+  }
+}
+
+void GP10_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
+  // Check if it is a GP-10
+  if ((sxdata[6] == 0x05) && (sxdata[7] == 0x03)) {
+    GP10_not_detected = 0;
+    if (GP10_connected == false) GP10_connect(sxdata[2]); //Byte 2 contains the correct device ID
+  }
+}
+
+void GP10_connect(uint8_t device_id) {
+  GP10_connected = true;
+  LCD_show_status_message("GP-10 connected ");
+  GP10_device_id = device_id;
+  GP10_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
+  DEBUGMSG("GP-10 connected on MIDI port " + String(Current_MIDI_port));
+  request_GP10(GP10_REQUEST_PATCH_NUMBER);
+  request_GP10(GP10_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
+  //write_GP10(GP10_EDITOR_MODE_ON); // Put the GP10 in EDITOR mode - otherwise tuner will not work
+  GP10_do_after_patch_selection();
+  GP10_assign_read = false; // Assigns should be read again
+  update_page = FULL;
+}
+
+void GP10_disconnect() {
+  GP10_connected = false;
+  GP10_on = false;
+  LCD_show_status_message("GP-10 offline   ");
+  DEBUGMSG("GP-10 offline");
+  update_page = FULL;
+  update_main_lcd = true;
+}
+
 
 // ********************************* Section 3: GP10 common MIDI out functions ********************************************
 
@@ -138,41 +168,41 @@ void GP10_check_sysex_delay() { // Will delay if last message was within GP10_SY
 void write_GP10(uint32_t address, uint8_t value) { // For sending one data byte
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
   uint8_t sysexmessage[15] = {0xF0, 0x41, GP10_device_id, 0x00, 0x00, 0x00, 0x05, 0x12, ad[3], ad[2], ad[1], ad[0], value, checksum, 0xF7};
   GP10_check_sysex_delay();
   if (GP10_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(15, sysexmessage);
   if (GP10_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(14, sysexmessage);
   if (GP10_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(14, sysexmessage);
   if (GP10_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(14, sysexmessage);
-  debug_sysex(sysexmessage, 15, "out(GP10)");
+  MIDI_debug_sysex(sysexmessage, 15, "out(GP10)");
 }
 
 void write_GP10(uint32_t address, uint8_t value1, uint8_t value2) { // For sending two data bytes
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
   uint8_t sysexmessage[16] = {0xF0, 0x41, GP10_device_id, 0x00, 0x00, 0x00, 0x05, 0x12, ad[3], ad[2], ad[1], ad[0], value1, value2, checksum, 0xF7};
   GP10_check_sysex_delay();
   if (GP10_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(16, sysexmessage);
   if (GP10_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(15, sysexmessage);
   if (GP10_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(15, sysexmessage);
   if (GP10_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(15, sysexmessage);
-  debug_sysex(sysexmessage, 16, "out(GP10)");
+  MIDI_debug_sysex(sysexmessage, 16, "out(GP10)");
 }
 
 void request_GP10(uint32_t address, uint8_t no_of_bytes) {
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
   uint8_t no1 = no_of_bytes / 128;
   uint8_t no2 = no_of_bytes % 128;
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no1 + no2); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no1 + no2); // Calculate the Roland checksum
   uint8_t sysexmessage[18] = {0xF0, 0x41, GP10_device_id, 0x00, 0x00, 0x00, 0x05, 0x11, ad[3], ad[2], ad[1], ad[0], 0x00, 0x00, no1, no2, checksum, 0xF7};
   GP10_check_sysex_delay();
   if (GP10_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(18, sysexmessage);
   if (GP10_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(17, sysexmessage);
   if (GP10_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(17, sysexmessage);
   if (GP10_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(17, sysexmessage);
-  debug_sysex(sysexmessage, 18, "out(GP10)");
+  MIDI_debug_sysex(sysexmessage, 18, "out(GP10)");
 }
 
 void GP10_request_patch_number() {
@@ -192,7 +222,7 @@ void GP10_SendProgramChange(uint8_t new_patch) {
 
   if (new_patch == GP10_patch_number) GP10_unmute();
   GP10_patch_number = new_patch;
-  Send_PC(new_patch, GP10_MIDI_channel, GP10_MIDI_port);
+  MIDI_send_PC(new_patch, GP10_MIDI_channel, GP10_MIDI_port);
   DEBUGMSG("out(GP10) PC" + String(new_patch)); //Debug
   //GR55_mute();
   //VG99_mute();
@@ -211,7 +241,7 @@ void GP10_do_after_patch_selection() {
   Current_device = GP10;
   update_LEDS = true;
   update_main_lcd = true;
-  update_switch_lcds = PARAMETERS;
+  update_page = PAR_ONLY;
   GP10_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GP10_PATCH_NUMBER, GP10_patch_number);
 
@@ -260,7 +290,7 @@ void GP10_bank_updown(bool updown, uint8_t bank_size) {
 
   if (GP10_bank_number == bank_number) GP10_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(true); //Re-read the patchnames for this bank
+  update_page = FULL; //Re-read the patchnames for this bank
 }
 
 void GP10_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -271,7 +301,27 @@ void GP10_page_check() { // Checks if the current patch is on the page and will 
       GP10_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page(true);
+  if (!onpage) {
+    update_page = FULL;
+  }
+}
+
+void GP10_display_patch_number_string() {
+  // Uses GP10_patch_number as input and returns Current_patch_number_string as output in format "P01"
+  if (GP10_bank_selection_active == false) {
+    GP10_number_format(GP10_patch_number, Current_patch_number_string);
+  }
+  else {
+    //Current_patch_number_string = "P" + String(GP10_bank_number) + "-";
+    String start_number, end_number;
+    GP10_number_format(GP10_bank_number * GP10_bank_size, start_number);
+    GP10_number_format((GP10_bank_number + 1) * GP10_bank_size - 1, end_number);
+    Current_patch_number_string = Current_patch_number_string + start_number + "-" + end_number;
+  }
+}
+
+void GP10_number_format(uint8_t number, String &Output) {
+  Output = Output + "P" + String((number + 1) / 10) + String((number + 1) % 10);
 }
 
 // ** US-20 simulation
@@ -310,7 +360,7 @@ void GP10_select_switch() {
     GP10_unmute();
     //GR55_mute();
     //VG99_mute();
-    //if (mode != MODE_GP10_GR55_COMBI) show_status_message(GP10_patch_name); // Show the correct patch name
+    //if (mode != MODE_GP10_GR55_COMBI) LCD_show_status_message(GP10_patch_name); // Show the correct patch name
   }
 }
 
@@ -319,11 +369,11 @@ void GP10_always_on_toggle() {
     GP10_always_on = !GP10_always_on; // Toggle GP10_always_on
     if (GP10_always_on) {
       GP10_unmute();
-      show_status_message("GP10 always ON");
+      LCD_show_status_message("GP10 always ON");
     }
     else {
       //GP10_mute();
-      show_status_message("GP10 can be muted");
+      LCD_show_status_message("GP10 can be muted");
     }
   }
 }
@@ -350,7 +400,7 @@ void GP10_mute() {
 // ********************************* Section 5: GP10 parameter and assign control ********************************************
 
 // Procedures for the GP10_PARAMETER:
-// 1. Load in SP array - in load_current_page(true)
+// 1. Load in SP array L load_page()
 // 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - GP10_read_parameter() below
 // 4. Press switch - GP10_parameter_press() below - also calls GP10_check_update_label()
@@ -442,13 +492,14 @@ void GP10_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
   if (SP[Sw].State == 3) value = Page[Current_page].Switch[Sw].Cmd[Cmd].Value3;
   if (SP[Sw].State == 4) value = Page[Current_page].Switch[Sw].Cmd[Cmd].Value4;
   if (SP[Sw].State == 5) value = Page[Current_page].Switch[Sw].Cmd[Cmd].Value5;
+  if (SP[Sw].Latch == RANGE) value = Expr_value;
   write_GP10(GP10_parameters[number].Address, value);
 
   // Show message
   GP10_check_update_label(Sw, value);
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  load_current_page(false); // To update the other switch states, we re-load the current page
+  PAGE_load_current(false); // To update the other parameter states, we re-load the current page
 }
 
 void GP10_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
@@ -457,7 +508,7 @@ void GP10_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_GP10(GP10_parameters[number].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(false); // To update the other switch states, we re-load the current page
+    PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -499,23 +550,21 @@ void GP10_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GP10
     msg = msg + ": " + type_name;
   }
   //Copy it to the display name:
-  set_label(Current_switch, msg);
-  //update_lcd = Current_switch + 1;
+  LCD_set_label(Current_switch, msg);
 }
 
 void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
   uint8_t index = SP[Sw].PP_number; // Read the parameter number (index to GP10-parameter array)
   if (index != NOT_FOUND) {
     if (GP10_parameters[index].Sublist > 100) { // Check if state needs to be read
-      clear_label(Sw);
+      LCD_clear_label(Sw);
       // Set the display message
       String msg = GP10_parameters[index].Name;
       String type_name = GP10_sublists[GP10_parameters[index].Sublist + value - 101];
       msg = msg + ": " + type_name;
 
       //Copy it to the display name:
-      set_label(Sw, msg);
-      //update_lcd = Current_switch + 1;
+      LCD_set_label(Sw, msg);
     }
   }
 }
@@ -548,7 +597,7 @@ void GP10_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
 void GP10_assign_press(uint8_t Sw) { // Switch set to GP10_ASSIGN is pressed
   // Send cc MIDI command to GP-10
   uint8_t cc_number = SP[Sw].Trigger;
-  Send_CC(cc_number, 127, GP10_MIDI_channel, GP10_MIDI_port);
+  MIDI_send_CC(cc_number, 127, GP10_MIDI_channel, GP10_MIDI_port);
 
   // Display the patch function
   if (SP[Sw].Assign_on) {
@@ -557,22 +606,22 @@ void GP10_assign_press(uint8_t Sw) { // Switch set to GP10_ASSIGN is pressed
     else value = SP[Sw].Assign_min;
     GP10_check_update_label(Sw, value);
   }
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void GP10_assign_release(uint8_t Sw) { // Switch set to GP10_ASSIGN is released
   // Send cc MIDI command to GP-10
   uint8_t cc_number = SP[Sw].Trigger;
-  Send_CC(cc_number, 0, GP10_MIDI_channel, GP10_MIDI_port);
+  MIDI_send_CC(cc_number, 0, GP10_MIDI_channel, GP10_MIDI_port);
 
   // Update status
   if (SP[Sw].Latch == MOMENTARY) {
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -662,8 +711,8 @@ void GP10_assign_request() { //Request the current assign
       SP[Current_switch].Latch = MOMENTARY; // Because we cannot read the state, it is best to make the pedal momentary
       // Set the Label
       msg = "ASGN" + String(SP[Current_switch].Assign_number) + ": Unknown";
-      set_label(Current_switch, msg);
-      Request_next_switch();
+      LCD_set_label(Current_switch, msg);
+      PAGE_request_next_switch();
     }
   }
   else { // Assign is off
@@ -673,8 +722,8 @@ void GP10_assign_request() { //Request the current assign
     SP[Current_switch].Colour = GP10_STOMP_COLOUR; // Set the on colour to default
     // Set the Label
     msg = "CC#" + String(SP[Current_switch].Trigger);
-    set_label(Current_switch, msg);
-    Request_next_switch();
+    LCD_set_label(Current_switch, msg);
+    PAGE_request_next_switch();
   }
 }
 

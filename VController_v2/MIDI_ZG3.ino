@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // ******************************** MIDI messages and functions for the Zoom G3 ********************************
 uint8_t ZG3_MIDI_port = 0;
 #define ZG3_NUMBER_OF_FX_SLOTS 6 // The Zoom G3 has 6 FX slots
@@ -52,7 +54,7 @@ void check_SYSEX_in_ZG3(const unsigned char* sxdata, short unsigned int sxlength
         update_main_lcd = true; // And show it on the main LCD
       }
       DEBUGMSG(SP[Current_switch].Label);
-      Request_next_switch();
+      PAGE_request_next_switch();
     }
     if ((sxdata[4] == 0x28) && (sxlength == 110)) {
       // These codes are the same as above. Only the sxdata postitions are all minus 5.
@@ -71,12 +73,12 @@ void check_SYSEX_in_ZG3(const unsigned char* sxdata, short unsigned int sxlength
         ZG3_patch_name[count] = static_cast<char>(sxdata[count + 0x62]); //Add ascii character to the SP.Label String
       }
       
-      load_current_page(false); // Will update all parameters on the page
+      update_page = FULL; // Need to update everything, otherwise displays go blank on detection of the G3.
     }
     if ((sxdata[4] == 0x31) && (sxdata[6] == 0x00) && (sxlength == 10)) { // Check for effect switched off on the ZOOM G5.
       uint8_t index = sxdata[5];
       if (index < 6) ZG3_FX[index] =  ZG3_FX[index] & B11111110; //Make a zero of bit 1 - this will switch off the effect
-      load_current_page(false);
+      PAGE_load_current(false);
     }
   }
 }
@@ -93,21 +95,49 @@ void check_PC_in_ZG3(byte channel, byte program) {  // Check incoming PC message
   }
 }
 
+void check_CC_in_ZG3(byte channel, byte control, byte value) {  // Check incoming CC messages from Zoom G3
+  // Check the source by checking the channel
+  if (channel == ZG3_MIDI_channel) { // GP10 outputs a control change message
+  }
+}
+
+// Detection of Zoom G3
+
+void ZG3_check_detect() { // Started from MIDI/MIDI_check_for_devices()
+  if (ZG3_connected) {
+    if (ZG3_not_detected >= ZG3_MAX_NOT_DETECTED) ZG3_disconnect();
+    ZG3_not_detected++;
+  }
+}
 
 void ZG3_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
+  // Check if it is a Zoom G3
+  if ((sxdata[6] == ZG3_MODEL_NUMBER) && (sxdata[7] == 0x00)) {
+    ZG3_not_detected = 0;
+    if (ZG3_connected == false) ZG3_connect(sxdata[2]); //Byte 2 contains the correct device ID
+    }
+}
 
-  // Check if it is a ZOOM G3
-  if ((sxdata[6] == ZG3_MODEL_NUMBER) && (sxdata[7] == 0x00) && (ZG3_detected == false)) {
-    ZG3_detected = true;
-    show_status_message("Zoom G3 detected");
-    ZG3_device_id = sxdata[2]; //Byte 2 contains the correct device ID
+void ZG3_connect(uint8_t device_id) {
+    ZG3_connected = true;
+    ZG3_on = true;
+    LCD_show_status_message("Zoom G3 connected");
+    ZG3_device_id = device_id; //Byte 2 contains the correct device ID
     ZG3_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
-    DEBUGMSG("Zoom G3 detected on MIDI port " + String(Current_MIDI_port));
+    DEBUGMSG("Zoom G3 connected on MIDI port " + String(Current_MIDI_port));
     write_ZG3(ZG3_EDITOR_MODE_ON); // Put the Zoom G3 in EDITOR mode
     write_ZG3(ZG3_REQUEST_PATCH_NUMBER);
     write_ZG3(ZG3_REQUEST_CURRENT_PATCH); //This will update the FX buttons
-    load_current_page(true);
-  }
+    //update_page = FULL;
+}
+
+void ZG3_disconnect() {
+  ZG3_connected = false;
+  ZG3_on = false;
+  LCD_show_status_message("Zoom G3 offline   ");
+  DEBUGMSG("Zoom G3 offline");
+  update_page = FULL;
+  update_main_lcd = true;
 }
 
 void write_ZG3(uint8_t message) {
@@ -117,7 +147,7 @@ void write_ZG3(uint8_t message) {
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(5, sysexmessage);
   if (ZG3_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(5, sysexmessage);
   if (ZG3_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(5, sysexmessage);
-  debug_sysex(sysexmessage, 6, "out(Zoom G3)");
+  MIDI_debug_sysex(sysexmessage, 6, "out(Zoom G3)");
 }
 
 void ZG3_request_patch(uint8_t number) { //Will request the complete patch information from the Zoom G3 (will receive 120 bytes as an answer)
@@ -127,7 +157,7 @@ void ZG3_request_patch(uint8_t number) { //Will request the complete patch infor
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(8, sysexmessage);
   if (ZG3_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(8, sysexmessage);
   if (ZG3_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(8, sysexmessage);
-  debug_sysex(sysexmessage, 9, "out(Zoom G3)");
+  MIDI_debug_sysex(sysexmessage, 9, "out(Zoom G3)");
 }
 
 void ZG3_set_FX_state(uint8_t number, uint8_t state) { //Will set an effect on or off
@@ -137,7 +167,7 @@ void ZG3_set_FX_state(uint8_t number, uint8_t state) { //Will set an effect on o
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(9, sysexmessage);
   if (ZG3_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(9, sysexmessage);
   if (ZG3_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(9, sysexmessage);
-  debug_sysex(sysexmessage, 10, "out(Zoom G3)");
+  MIDI_debug_sysex(sysexmessage, 10, "out(Zoom G3)");
 }
 
 void ZG3_send_bpm() { //Will change the bpm to the specified value
@@ -147,14 +177,14 @@ void ZG3_send_bpm() { //Will change the bpm to the specified value
   if (ZG3_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(9, sysexmessage);
   if (ZG3_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(9, sysexmessage);
   if (ZG3_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(9, sysexmessage);
-  debug_sysex(sysexmessage, 10, "out(Zoom G3)");
+  MIDI_debug_sysex(sysexmessage, 10, "out(Zoom G3)");
 }
 
 void ZG3_SendProgramChange(uint8_t new_patch) {
 
   //if (new_patch == ZG3_patch_number) ZG3_unmute();
   ZG3_patch_number = new_patch;
-  Send_PC(new_patch, ZG3_MIDI_channel, ZG3_MIDI_port);
+  MIDI_send_PC(new_patch, ZG3_MIDI_channel, ZG3_MIDI_port);
   DEBUGMSG("out(ZG3) PC" + String(new_patch)); //Debug
   //GR55_mute();
   //VG99_mute();
@@ -173,7 +203,7 @@ void ZG3_do_after_patch_selection() {
   Current_device = ZG3;
   update_LEDS = true;
   update_main_lcd = true;
-  update_switch_lcds = PARAMETERS;
+  update_page = PAR_ONLY;
   //ZG3_request_guitar_switch_states();
   //EEPROM.write(EEPROM_ZG3_PATCH_NUMBER, ZG3_patch_number);
 
@@ -220,7 +250,7 @@ void ZG3_bank_updown(bool updown, uint8_t bank_size) {
 
   if (ZG3_bank_number == bank_number) ZG3_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(true); //Re-read the patchnames for this bank
+  update_page = FULL; //Re-read the patchnames for this bank
 }
 
 void ZG3_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -232,7 +262,24 @@ void ZG3_page_check() { // Checks if the current patch is on the page and will r
       ZG3_Remember_FXs(s); // Copy the FX states
     }
   }
-  if (!onpage) load_current_page(true);
+  if (!onpage) update_page = FULL;
+}
+
+void ZG3_display_patch_number_string() {
+  if (ZG3_bank_selection_active == false) {
+    ZG3_number_format(ZG3_patch_number, Current_patch_number_string);
+  }
+  else {
+    String start_number1, end_number1;
+    ZG3_number_format(ZG3_bank_number * ZG3_bank_size, start_number1);
+    ZG3_number_format((ZG3_bank_number + 1) * ZG3_bank_size - 1, end_number1);
+    Current_patch_number_string = Current_patch_number_string + start_number1 + "-" + end_number1;
+  }
+}
+
+void ZG3_number_format(uint8_t number, String &Output) {
+  char BankChar = 65 + (number / 10);
+  Output = Output + BankChar + String(number % 10);
 }
 
 void ZG3_Remember_FXs(uint8_t Sw) {
@@ -245,16 +292,16 @@ void ZG3_Remember_FXs(uint8_t Sw) {
   ZG3_FX[5] = SP[Sw].Target_byte6;
 }
 
-// Toggle GP10 stompbox parameter
+// Toggle Zoom G3 stompbox parameter
 void ZG3_FX_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
 
   // Send sysex MIDI command to Zoom G3
   ZG3_set_FX_state(SP[Sw].PP_number - 1, SP[Sw].State - 1);
 
   // Show message
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  //load_current_page(false); // To update the other switch states, we re-load the current page
+  //PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void ZG3_FX_set_type_and_state(uint8_t Sw) {
@@ -399,6 +446,6 @@ void ZG3_FX_set_type_and_state(uint8_t Sw) {
 
   uint8_t FX_type = ZG3_FX[index] >> 1; //The FX type is stored in bit 1-7.
   String msg = ZG3_FX_types[FX_type].Name;  //Find the patch name in the ZG3_FX_types array
-  set_label(Sw, msg);
+  LCD_set_label(Sw, msg);
   SP[Sw].Colour = ZG3_FX_types[FX_type].Colour; //Find the LED colour in the ZG3_FX_types array
 }

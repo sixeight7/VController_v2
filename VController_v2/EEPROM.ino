@@ -1,24 +1,4 @@
-/****************************************************************************
-**
-** Copyright (C) 2015 Catrinus Feddema
-** All rights reserved.
-** This file is part of "VController" teensy software.
-**
-** This program is free software; you can redistribute it and/or modify
-** it under the terms of the GNU General Public License as published by
-** the Free Software Foundation; either version 2 of the License, or
-** (at your option) any later version.
-**
-** This program is distributed in the hope that it will be useful,
-** but WITHOUT ANY WARRANTY; without even the implied warranty of
-** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-** GNU General Public License for more details.
-**
-** You should have received a copy of the GNU General Public License along
-** with this program; if not, write to the Free Software Foundation, Inc.,
-** 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-**
-****************************************************************************/
+// Please read VController_v2.ino for information about the license and authors
 
 // Manages the 128 bytes EEPROM of Teensy LC
 
@@ -43,7 +23,7 @@
 void setup_eeprom()
 {
   // Read data from EEPROM memory
-  // read_eeprom_common_data();
+  // EEP_read_eeprom_common_data();
 }
 
 void main_eeprom()
@@ -51,7 +31,7 @@ void main_eeprom()
 
 }
 
-void read_eeprom_common_data() {
+void EEP_read_eeprom_common_data() {
   GP10_patch_number = EEPROM.read(EEPROM_GP10_PATCH_NUMBER);
   GP10_always_on = EEPROM.read(EEPROM_GP10_ALWAYS_ON);
   GR55_patch_number = (EEPROM.read(EEPROM_GR55_PATCH_MSB) * 256) + EEPROM.read(EEPROM_GR55_PATCH_LSB);
@@ -62,7 +42,7 @@ void read_eeprom_common_data() {
   bpm = EEPROM.read(EEPROM_BPM);
 }
 
-void write_eeprom_common_data() {
+void EEP_write_eeprom_common_data() {
   EEPROM.write(EEPROM_GP10_PATCH_NUMBER, GP10_patch_number);
   EEPROM.write(EEPROM_GP10_ALWAYS_ON, GP10_always_on);
   EEPROM.write(EEPROM_GR55_PATCH_MSB, (GR55_patch_number / 256));
@@ -76,7 +56,7 @@ void write_eeprom_common_data() {
 }
 
 // Store data in memory location
-void store_memory(uint8_t number) {
+void EEP_store_memory(uint8_t number) {
   uint8_t location = EEPROM_MEMORY_BASE_ADDRESS + (number * EEPROM_MEMORY_LOCATION_SIZE);
   EEPROM.write(location, GP10_patch_number); // Store GP10 patch number (0 - 99)
   EEPROM.write(location + 1, GR55_patch_number % 256); // Store GR55 patch number LSB (2 extra bits needed - patches go from 0 - 657)
@@ -89,12 +69,12 @@ void store_memory(uint8_t number) {
   uint8_t booleans2 = (GP10_COSM_onoff) | (GP10_nrml_pu_onoff << 1) | (GR55_synth1_onoff << 2) | (GR55_synth2_onoff << 3) | (GR55_COSM_onoff << 4) | (GR55_nrml_pu_onoff << 5) | (VG99_COSM_A_onoff << 6) | (VG99_COSM_B_onoff << 7);
   EEPROM.write(location + 4, booleans1); // Store the boolean values
   EEPROM.write(location + 5, booleans2); // Store the boolean values
-  //show_status_message("Memory " + String(number + 1) + " stored ");
+  //LCD_show_status_message("Memory " + String(number + 1) + " stored ");
   DEBUGMSG("write: B" + String(booleans1, BIN) + ", B" + String(booleans2, BIN));
 }
 
 // Store data in memory location
-void read_memory(uint8_t number) {
+void EEP_read_memory(uint8_t number) {
   uint8_t location = EEPROM_MEMORY_BASE_ADDRESS + (number * EEPROM_MEMORY_LOCATION_SIZE);
   uint8_t booleans1 = EEPROM.read(location + 4); // Read the boolean values
   uint8_t booleans2 = EEPROM.read(location + 5); // Read the boolean values

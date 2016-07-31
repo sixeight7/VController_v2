@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // ******************************** MIDI messages and functions for the Roland VG-99 and the FC300 ********************************
 
 // Note: when connecting the VG-99 to the RRC connector make sure that you make the following settings:
@@ -67,6 +69,7 @@ void check_SYSEX_in_VG99(const unsigned char* sxdata, short unsigned int sxlengt
         VG99_patch_number = sxdata[11] * 128 + sxdata[12];
         VG99_page_check();
         VG99_do_after_patch_selection();
+        update_page = FULL;
       }
     }
 
@@ -78,28 +81,27 @@ void check_SYSEX_in_VG99(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 16; count++) {
             SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = Current_switch + 1;
           if (SP[Current_switch].PP_number == VG99_patch_number) {
             VG99_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
           DEBUGMSG(SP[Current_switch].Label);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
         case VG99_PARAMETER:
           VG99_read_parameter(sxdata[11], sxdata[12]);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
         case VG99_ASSIGN:
           if (VG99_read_assign_target == false) VG99_read_current_assign(address, sxdata, sxlength);
           else {
             VG99_read_parameter(sxdata[11], sxdata[12]); //Reading the assign target is equal to readig the parameter
-            Request_next_switch();
+            PAGE_request_next_switch();
           }
           break;
       }
     }
-    
+
     // Check if it is the current patch name (address: 0x60, 0x00, 0x00, 0x00)
     if ((sxdata[6] == 0x12) && (address == 0x60000000) ) {
       VG99_patch_name = "";
@@ -159,22 +161,52 @@ void check_PC_in_VG99(byte channel, byte program) { // Check incoming PC message
   }
 }
 
-void VG99_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
-
-  // Check if it is a VG-99
-  if ((sxdata[6] == 0x1C) && (sxdata[7] == 0x02) && (VG99_detected == false)) {
-    VG99_detected = true;
-    show_status_message("VG-99 detected  ");
-    VG99_device_id = sxdata[2]; //Byte 2 contains the correct device ID
-    VG99_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
-    DEBUGMSG("VG-99 detected on MIDI port " + String(Current_MIDI_port));
-    //write_VG99(VG99_EDITOR_MODE_ON); // Put the VG-99 into editor mode - saves lots of messages on the VG99 display, but also overloads the buffer
-    //VG99_fix_reverse_pedals();
-    request_VG99(VG99_REQUEST_PATCH_NUMBER);
-    request_VG99(VG99_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
-      VG99_do_after_patch_selection();
-    load_current_page(true);
+void check_CC_in_VG99(byte channel, byte control, byte value) {  // Check incoming CC messages from VG-99
+  if (channel == VG99_MIDI_channel) { // GR55 outputs a control change message
+    if (control == 0) {
+      VG99_CC01 = value;
+    }
   }
+}
+
+// Detection of VG-99
+
+void VG99_check_detect() { // Started from MIDI/MIDI_check_for_devices()
+  if (VG99_connected) {
+    if (VG99_not_detected >= VG99_MAX_NOT_DETECTED) VG99_disconnect();
+    VG99_not_detected++;
+  }
+}
+
+void VG99_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
+  // Check if it is a VG-99
+  if ((sxdata[6] == 0x1C) && (sxdata[7] == 0x02)) {
+    VG99_not_detected = 0;
+    if (VG99_connected == false) VG99_connect(sxdata[2]); //Byte 2 contains the correct device ID
+  }
+}
+
+void VG99_connect(uint8_t device_id) {
+  VG99_connected = true;
+  LCD_show_status_message("VG-99 connected  ");
+  VG99_device_id = device_id; //Byte 2 contains the correct device ID
+  VG99_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
+  DEBUGMSG("VG-99 connected on MIDI port " + String(Current_MIDI_port));
+  //write_VG99(VG99_EDITOR_MODE_ON); // Put the VG-99 into editor mode - saves lots of messages on the VG99 display, but also overloads the buffer
+  //VG99_fix_reverse_pedals();
+  request_VG99(VG99_REQUEST_PATCH_NUMBER);
+  request_VG99(VG99_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
+  VG99_do_after_patch_selection();
+  update_page = FULL;
+}
+
+void VG99_disconnect() {
+  VG99_connected = false;
+  VG99_on = false;
+  LCD_show_status_message("VG-99 offline   ");
+  DEBUGMSG("GP-10 offline");
+  update_page = FULL;
+  update_main_lcd = true;
 }
 
 // ********************************* Section 3: VG99 common MIDI out functions ********************************************
@@ -187,65 +219,65 @@ void VG99_check_sysex_delay() { // Will delay if last message was within VG99_SY
 void write_VG99(uint32_t address, uint8_t value) { // For sending one data byte
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
   uint8_t sysexmessage[14] = {0xF0, 0x41, VG99_device_id, 0x00, 0x00, 0x1C, 0x12, ad[3], ad[2], ad[1], ad[0], value, checksum, 0xF7};
   VG99_check_sysex_delay();
   if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(14, sysexmessage);
   if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(13, sysexmessage);
   if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(13, sysexmessage);
   if (VG99_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(13, sysexmessage);
-  debug_sysex(sysexmessage, 14, "out(VG99)");
+  MIDI_debug_sysex(sysexmessage, 14, "out(VG99)");
 }
 
 void write_VG99(uint32_t address, uint8_t value1, uint8_t value2) { // For sending two data bytes
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
   uint8_t sysexmessage[15] = {0xF0, 0x41, VG99_device_id, 0x00, 0x00, 0x1C, 0x12, ad[3], ad[2], ad[1], ad[0], value1, value2, checksum, 0xF7};
   VG99_check_sysex_delay();
   if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(15, sysexmessage);
   if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(14, sysexmessage);
   if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(14, sysexmessage);
   if (VG99_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(14, sysexmessage);
-  debug_sysex(sysexmessage, 15, "out(VG99)");
+  MIDI_debug_sysex(sysexmessage, 15, "out(VG99)");
 }
 
 void write_VG99fc(uint16_t address, uint8_t value) { // VG99 writing to the FC300
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into two bytes: ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[1] + ad[0] + value); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[1] + ad[0] + value); // Calculate the Roland checksum
   uint8_t sysexmessage[12] = {0xF0, 0x41, FC300_device_id, 0x00, 0x00, 0x020, 0x12, ad[1], ad[0], value, checksum, 0xF7};
   VG99_check_sysex_delay();
   if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(12, sysexmessage);
   if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(11, sysexmessage);
   if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(11, sysexmessage);
   if (VG99_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(11, sysexmessage);
-  debug_sysex(sysexmessage, 12, "out(VG99fc)");
+  MIDI_debug_sysex(sysexmessage, 12, "out(VG99fc)");
 }
 
 void write_VG99fc(uint16_t address, uint8_t value1, uint8_t value2, uint8_t value3) { // VG99 writing to the FC300 - 3 bytes version
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into two bytes: ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[1] + ad[0] + value1 + value2 + value3); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[1] + ad[0] + value1 + value2 + value3); // Calculate the Roland checksum
   uint8_t sysexmessage[14] = {0xF0, 0x41, FC300_device_id, 0x00, 0x00, 0x020, 0x12, ad[1], ad[0], value1, value2, value3, checksum, 0xF7};
   VG99_check_sysex_delay();
   if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(14, sysexmessage);
   if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(13, sysexmessage);
   if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(13, sysexmessage);
   if (VG99_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(13, sysexmessage);
-  debug_sysex(sysexmessage, 14, "out(VG99fc)");
+  MIDI_debug_sysex(sysexmessage, 14, "out(VG99fc)");
 }
 
 void request_VG99(uint32_t address, uint8_t no_of_bytes) {
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no_of_bytes); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no_of_bytes); // Calculate the Roland checksum
   uint8_t sysexmessage[17] = {0xF0, 0x41, VG99_device_id, 0x00, 0x00, 0x1C, 0x11, ad[3], ad[2], ad[1], ad[0], 0x00, 0x00, 0x00, no_of_bytes, checksum, 0xF7};
   VG99_check_sysex_delay();
   if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(17, sysexmessage);
   if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(16, sysexmessage);
   if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(16, sysexmessage);
   if (VG99_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(16, sysexmessage);
-  debug_sysex(sysexmessage, 17, "out(VG99)");
+  MIDI_debug_sysex(sysexmessage, 17, "out(VG99)");
 }
 
 void VG99_request_patch_number() {
@@ -261,7 +293,7 @@ void VG99_send_bpm() {
 }
 
 void VG99_TAP_TEMPO_LED_ON() {
-  if ((VG99_TAP_TEMPO_LED_CC > 0) && (VG99_detected)) {
+  if ((VG99_TAP_TEMPO_LED_CC > 0) && (VG99_connected)) {
     if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendControlChange(VG99_TAP_TEMPO_LED_CC , 127, VG99_MIDI_channel);
     if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendControlChange(VG99_TAP_TEMPO_LED_CC , 127, VG99_MIDI_channel);
     if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendControlChange(VG99_TAP_TEMPO_LED_CC , 127, VG99_MIDI_channel);
@@ -270,7 +302,7 @@ void VG99_TAP_TEMPO_LED_ON() {
 }
 
 void VG99_TAP_TEMPO_LED_OFF() {
-  if ((VG99_TAP_TEMPO_LED_CC > 0) && (VG99_detected)) {
+  if ((VG99_TAP_TEMPO_LED_CC > 0) && (VG99_connected)) {
     if (VG99_MIDI_port == USBMIDI_PORT) usbMIDI.sendControlChange(VG99_TAP_TEMPO_LED_CC , 0, VG99_MIDI_channel);
     if (VG99_MIDI_port == MIDI1_PORT) MIDI1.sendControlChange(VG99_TAP_TEMPO_LED_CC , 0, VG99_MIDI_channel);
     if (VG99_MIDI_port == MIDI2_PORT) MIDI2.sendControlChange(VG99_TAP_TEMPO_LED_CC , 0, VG99_MIDI_channel);
@@ -285,8 +317,8 @@ void VG99_SendProgramChange(uint16_t new_patch) {
   //if (new_patch == VG99_patch_number) VG99_unmute();
   VG99_patch_number = new_patch;
 
-  Send_CC(0, new_patch / 100, VG99_MIDI_channel, VG99_MIDI_port);
-  Send_PC(new_patch % 100, VG99_MIDI_channel, VG99_MIDI_port);
+  MIDI_send_CC(0, new_patch / 100, VG99_MIDI_channel, VG99_MIDI_port);
+  MIDI_send_PC(new_patch % 100, VG99_MIDI_channel, VG99_MIDI_port);
   DEBUGMSG("out(VG99) PC" + String(new_patch)); //Debug
   //GP10_mute();
   //GR55_mute();
@@ -301,7 +333,7 @@ void VG99_do_after_patch_selection() {
   Current_device = VG99;
   update_LEDS = true;
   update_main_lcd = true;
-  update_switch_lcds = PARAMETERS;
+  update_page = PAR_ONLY;
   VG99_request_guitar_switch_states();
   //EEPROM.write(EEPROM_VG99_PATCH_MSB, (VG99_patch_number / 256));
   //EEPROM.write(EEPROM_VG99_PATCH_LSB, (VG99_patch_number % 256));
@@ -351,7 +383,7 @@ void VG99_bank_updown(bool updown, uint16_t bank_size) {
 
   if (VG99_bank_number == bank_number) VG99_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(true); //Re-read the patchnames for this bank
+  update_page = FULL; //Re-read the patchnames for this bank
 }
 
 void VG99_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -362,7 +394,33 @@ void VG99_page_check() { // Checks if the current patch is on the page and will 
       VG99_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page(true);
+  if (!onpage) {
+    update_page = FULL;
+  }
+}
+
+void VG99_display_patch_number_string() {
+  if (VG99_bank_selection_active == false) {
+    VG99_number_format(VG99_patch_number, Current_patch_number_string);
+  }
+  else {
+    //Current_patch_number_string = "P" + String(GP10_bank_number) + "-";
+    String start_number1, end_number1;
+    VG99_number_format(VG99_bank_number * VG99_bank_size, start_number1);
+    VG99_number_format((VG99_bank_number + 1) * VG99_bank_size - 1, end_number1);
+    Current_patch_number_string = Current_patch_number_string + start_number1 + "-" + end_number1;
+  }
+
+}
+
+void VG99_number_format(uint16_t number, String &Output) {
+  // Uses VG99_patch_number as input and returns Current_patch_number_string as output in format "U001"
+  // First character is U for User or P for Preset patches
+  if (number > 199) Output = Output + "P";
+  else Output = Output + "U";
+
+  // Then add the patch number
+  Output = Output + String((number + 1) / 100) + String(((number + 1) / 10) % 10) + String((number + 1) % 10);
 }
 
 // ** US-20 simulation
@@ -400,7 +458,7 @@ void VG99_select_switch() {
     VG99_unmute();
     //GP10_mute();
     //GR55_mute();
-    //if (mode != MODE_VG99_VG99_COMBI) show_status_message(VG99_patch_name); // Show the correct patch name
+    //if (mode != MODE_VG99_VG99_COMBI) LCD_show_status_message(VG99_patch_name); // Show the correct patch name
   }
 }
 
@@ -409,11 +467,11 @@ void VG99_always_on_toggle() {
     VG99_always_on = !VG99_always_on; // Toggle VG99_always_on
     if (VG99_always_on) {
       VG99_unmute();
-      show_status_message("VG99 always ON");
+      LCD_show_status_message("VG99 always ON");
     }
     else {
       //VG99_mute();
-      show_status_message("VG99 can be muted");
+      LCD_show_status_message("VG99 can be muted");
     }
   }
 }
@@ -445,7 +503,7 @@ void VG99_mute_now() {
 // Procedures for the VG99_PARAMETER and VG99_ASSIGN commands
 
 // Procedures for the VG99_PARAMETER:
-// 1. Load in SP array - in load_current_page(true)
+// 1. Load in SP array - in PAGE_load_current(true)
 // 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - VG99_read_parameter() below
 // 4. Press switch - VG99_parameter_press() below - also calls VG99_check_update_label()
@@ -765,9 +823,9 @@ void VG99_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
 
   // Show message
   VG99_check_update_label(Sw, value);
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  load_current_page(false); // To update the other switch states, we re-load the current page
+  PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void VG99_parameter_release(uint8_t Sw, uint8_t Cmd, int8_t number) {
@@ -779,7 +837,7 @@ void VG99_parameter_release(uint8_t Sw, uint8_t Cmd, int8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_VG99(0x60000000 + VG99_parameters[part][index].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(false); // To update the other switch states, we re-load the current page
+    PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -838,8 +896,7 @@ void VG99_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current VG99
     msg = msg + ":" + type_name;
   }
   //Copy it to the display name:
-  set_label(Current_switch, msg);
-  //update_lcd = Current_switch + 1;
+  LCD_set_label(Current_switch, msg);
 }
 
 void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
@@ -849,7 +906,7 @@ void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
     uint8_t index = par_no % 30;
 
     if (VG99_parameters[part][index].Sublist > 100) { // Check if state needs to be read
-      clear_label(Sw);
+      LCD_clear_label(Sw);
       // Set the display message
       String msg = VG99_parameters[part][index].Name;
       uint8_t sublist_no = (VG99_parameters[part][index].Sublist - 101);
@@ -857,8 +914,7 @@ void VG99_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label f
       msg = msg + ":" + type_name;
 
       //Copy it to the display name:
-      set_label(Sw, msg);
-      //update_lcd = Current_switch + 1;
+      LCD_set_label(Sw, msg);
     }
   }
 }
@@ -890,7 +946,7 @@ void VG99_assign_press(uint8_t Sw) { // Switch set to VG99_ASSIGN is pressed
   // Send cc MIDI command to VG-99. If cc is 1 - 8, send the FC300 CTL sysex code
   uint8_t cc_number = SP[Sw].Trigger;
   if ((cc_number >= 1) && (cc_number <= 8)) write_VG99fc(FC300_CTL[cc_number - 1], 127);
-  else Send_CC(cc_number, 127, VG99_MIDI_channel, VG99_MIDI_port);
+  else MIDI_send_CC(cc_number, 127, VG99_MIDI_channel, VG99_MIDI_port);
 
   // Display the patch function
   if (SP[Sw].Assign_on) {
@@ -899,9 +955,9 @@ void VG99_assign_press(uint8_t Sw) { // Switch set to VG99_ASSIGN is pressed
     else value = SP[Sw].Assign_min;
     VG99_check_update_label(Sw, value);
   }
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void VG99_assign_release(uint8_t Sw) { // Switch set to VG99_ASSIGN is released
@@ -909,14 +965,14 @@ void VG99_assign_release(uint8_t Sw) { // Switch set to VG99_ASSIGN is released
   // Send cc MIDI command to VG-99. If cc is 1 - 8, send the FC300 CTL sysex code
   uint8_t cc_number = SP[Sw].Trigger;
   if ((cc_number >= 1) && (cc_number <= 8)) write_VG99fc(FC300_CTL[cc_number - 1], 0);
-  else Send_CC(cc_number, 0, VG99_MIDI_channel, VG99_MIDI_port);
+  else MIDI_send_CC(cc_number, 0, VG99_MIDI_channel, VG99_MIDI_port);
 
   // Update status
   if (SP[Sw].Latch == MOMENTARY) {
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -943,7 +999,7 @@ void VG99_request_current_assign() {
     VG99_read_assign_target = false;
     request_VG99(SP[Current_switch].Address, 14);  //Request 14 bytes for the VG99 assign
   }
-  else Request_next_switch(); // Wrong assign number given in Config - skip it
+  else PAGE_request_next_switch(); // Wrong assign number given in Config - skip it
 }
 
 void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, short unsigned int sxlength) {
@@ -1009,8 +1065,8 @@ void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
       // Set the Label
       if (SP[Current_switch].Assign_number <= 16) msg = "CC#" + String(SP[Current_switch].Trigger) + " (ASGN" + String(SP[Current_switch].Assign_number) + ")";
       else msg = "FC300 ASGN" + String(SP[Current_switch].Assign_number - 16);
-      set_label(Current_switch, msg);
-      Request_next_switch();
+      LCD_set_label(Current_switch, msg);
+      PAGE_request_next_switch();
     }
 
   }
@@ -1022,8 +1078,8 @@ void VG99_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
     // Set the Label
     if (SP[Current_switch].Assign_number <= 16) msg = "CC#" + String(SP[Current_switch].Trigger);
     else msg = "--"; //"FC300 ASGN" + String(SP[Current_switch].Assign_number - 16);
-    set_label(Current_switch, msg);
-    Request_next_switch();
+    LCD_set_label(Current_switch, msg);
+    PAGE_request_next_switch();
   }
 }
 

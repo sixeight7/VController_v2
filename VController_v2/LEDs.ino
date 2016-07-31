@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // Functions for LED control for which I use 12 5mm Neopixel RGB LEDs
 
 #include <Adafruit_NeoPixel.h>
@@ -105,14 +107,14 @@ void main_LED_control()
 {
   if (update_LEDS == true) {
     update_LEDS = false;
-    update_LEDs();
+    LED_update();
   }
 
   // Check here if LEDs need to flash and make them do it
-  flash_LEDs();
+  LED_flash();
 }
 
-void update_LEDs() {
+void LED_update() {
   //Check the switch_states on the current page
   for (uint8_t s = 0; s < NUMBER_OF_SWITCHES; s++) {
 
@@ -120,187 +122,187 @@ void update_LEDs() {
     switch (SP[s].Type) {
       case GP10_PATCH:
         if (GP10_patch_number == SP[s].PP_number) {
-          if (GP10_on) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10); // Show off colour
+          if (GP10_on) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10); // Show off colour
         }
-        else show_colour(s, 0);
+        else LED_show_colour(s, 0);
         break;
       case GP10_RELSEL:
-        if (GP10_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
+        if (GP10_bank_selection_active) LED_show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
         else {
           if (GP10_patch_number == SP[s].PP_number) {
             if (GP10_on) {
-              show_colour(s, SP[s].Colour);
+              LED_show_colour(s, SP[s].Colour);
             }
-            else show_colour(s, SP[s].Colour + 10); // Show off colour
+            else LED_show_colour(s, SP[s].Colour + 10); // Show off colour
           }
           else {
-            show_colour(s, 0);
+            LED_show_colour(s, 0);
           }
         }
         break;
       case GP10_BANK_UP:
       case GP10_BANK_DOWN:
-        if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-        else show_colour(s, GP10_PATCH_COLOUR + 10);
+        if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+        else LED_show_colour(s, GP10_PATCH_COLOUR + 10);
         break;
       case GP10_PARAMETER:
       case GP10_ASSIGN:
         if ((SP[s].Latch == MOMENTARY) || (SP[s].Latch == TOGGLE)) {
           //DEBUGMSG("State pedal " + String(s) + ": " + String(SP[s].State));
-          if (SP[s].State == 1) show_colour(s, SP[s].Colour);  // LED on
-          if (SP[s].State == 2) show_colour(s, SP[s].Colour + 10); // LED dimmed
-          if (SP[s].State == 0) show_colour(s, 0); // LED off
+          if (SP[s].State == 1) LED_show_colour(s, SP[s].Colour);  // LED on
+          if (SP[s].State == 2) LED_show_colour(s, SP[s].Colour + 10); // LED dimmed
+          if (SP[s].State == 0) LED_show_colour(s, 0); // LED off
         }
         else { // For the TRI/FOUR/FIVESTATE only light up when pressed.
-          if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10);
+          if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10);
         }
         break;
       case GR55_PATCH:
         if (GR55_patch_number == SP[s].PP_number) {
-          if (GR55_on) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10);
+          if (GR55_on) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10);
         }
-        else show_colour(s, 0);
+        else LED_show_colour(s, 0);
         break;
       case GR55_RELSEL:
-        if (GR55_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
+        if (GR55_bank_selection_active) LED_show_colour(s, SP[s].Colour + 100); //Flash the GR55 PATCH LEDs
         else {
           if (GR55_patch_number == SP[s].PP_number) {
-            if (GR55_on) show_colour(s, SP[s].Colour);
-            else show_colour(s, SP[s].Colour + 10);
+            if (GR55_on) LED_show_colour(s, SP[s].Colour);
+            else LED_show_colour(s, SP[s].Colour + 10);
           }
-          else show_colour(s, 0);
+          else LED_show_colour(s, 0);
         }
         break;
       case GR55_BANK_UP:
       case GR55_BANK_DOWN:
-        if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-        else show_colour(s, GR55_PATCH_COLOUR + 10);
+        if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+        else LED_show_colour(s, GR55_PATCH_COLOUR + 10);
         break;
       case GR55_PARAMETER:
       case GR55_ASSIGN:
         if ((SP[s].Latch == MOMENTARY) || (SP[s].Latch == TOGGLE)) {
-          if (SP[s].State == 1) show_colour(s, SP[s].Colour);  // LED on
-          if (SP[s].State == 2) show_colour(s, SP[s].Colour + 10); // LED dimmed
-          if (SP[s].State == 0) show_colour(s, 0); // LED off
+          if (SP[s].State == 1) LED_show_colour(s, SP[s].Colour);  // LED on
+          if (SP[s].State == 2) LED_show_colour(s, SP[s].Colour + 10); // LED dimmed
+          if (SP[s].State == 0) LED_show_colour(s, 0); // LED off
         }
         else { // For the TRI/FOUR/FIVESTATE only light up when pressed.
-          if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10);
+          if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10);
         }
         break;
       case VG99_PATCH:
         if (VG99_patch_number == SP[s].PP_number) {
-          if (VG99_on) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10);
+          if (VG99_on) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10);
         }
-        else show_colour(s, 0);
+        else LED_show_colour(s, 0);
         break;
       case VG99_RELSEL:
-        if (VG99_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
+        if (VG99_bank_selection_active) LED_show_colour(s, SP[s].Colour + 100); //Flash the VG99 PATCH LEDs
         else {
           if (VG99_patch_number == SP[s].PP_number) {
-            if (VG99_on) show_colour(s, SP[s].Colour);
-            else show_colour(s, SP[s].Colour + 10);
+            if (VG99_on) LED_show_colour(s, SP[s].Colour);
+            else LED_show_colour(s, SP[s].Colour + 10);
           }
-          else show_colour(s, 0);
+          else LED_show_colour(s, 0);
         }
         break;
       case VG99_BANK_UP:
       case VG99_BANK_DOWN:
-        if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-        else show_colour(s, VG99_PATCH_COLOUR + 10);
+        if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+        else LED_show_colour(s, VG99_PATCH_COLOUR + 10);
         break;
       case VG99_PARAMETER:
       case VG99_ASSIGN:
         if ((SP[s].Latch == MOMENTARY) || (SP[s].Latch == TOGGLE)) {
-          if (SP[s].State == 1) show_colour(s, SP[s].Colour);  // LED on
-          if (SP[s].State == 2) show_colour(s, SP[s].Colour + 10); // LED dimmed
-          if (SP[s].State == 0) show_colour(s, 0); // LED off
+          if (SP[s].State == 1) LED_show_colour(s, SP[s].Colour);  // LED on
+          if (SP[s].State == 2) LED_show_colour(s, SP[s].Colour + 10); // LED dimmed
+          if (SP[s].State == 0) LED_show_colour(s, 0); // LED off
         }
         else { // For the TRI/FOUR/FIVESTATE only light up when pressed.
-          if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10);
+          if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10);
         }
         break;
       case ZG3_PATCH:
         if (ZG3_patch_number == SP[s].PP_number) {
-          if (ZG3_on) show_colour(s, SP[s].Colour);
-          else show_colour(s, SP[s].Colour + 10); // Show off colour
+          if (ZG3_on) LED_show_colour(s, SP[s].Colour);
+          else LED_show_colour(s, SP[s].Colour + 10); // Show off colour
         }
-        else show_colour(s, 0);
+        else LED_show_colour(s, 0);
         break;
       case ZG3_RELSEL:
-        if (ZG3_bank_selection_active) show_colour(s, SP[s].Colour + 100); //Flash the GP10 PATCH LEDs
+        if (ZG3_bank_selection_active) LED_show_colour(s, SP[s].Colour + 100); //Flash the ZG3 PATCH LEDs
         else {
           if (ZG3_patch_number == SP[s].PP_number) {
-            if (ZG3_on) show_colour(s, SP[s].Colour);
-            else show_colour(s, SP[s].Colour + 10); // Show off colour
+            if (ZG3_on) LED_show_colour(s, SP[s].Colour);
+            else LED_show_colour(s, SP[s].Colour + 10); // Show off colour
           }
-          else show_colour(s, 0);
+          else LED_show_colour(s, 0);
         }
         break;
       case ZG3_BANK_UP:
       case ZG3_BANK_DOWN:
-        if (SP[s].Pressed) show_colour(s, SP[s].Colour);
-        else show_colour(s, ZG3_PATCH_COLOUR + 10);
+        if (SP[s].Pressed) LED_show_colour(s, SP[s].Colour);
+        else LED_show_colour(s, ZG3_PATCH_COLOUR + 10);
         break;
       case ZG3_FX_TOGGLE:
-        if (SP[s].State == 2) show_colour(s, SP[s].Colour);  // LED on
-        if (SP[s].State == 1) show_colour(s, SP[s].Colour + 10); // LED dimmed
-        if (SP[s].State == 0) show_colour(s, 0); // LED off
+        if (SP[s].State == 2) LED_show_colour(s, SP[s].Colour);  // LED on
+        if (SP[s].State == 1) LED_show_colour(s, SP[s].Colour + 10); // LED dimmed
+        if (SP[s].State == 0) LED_show_colour(s, 0); // LED off
         break;
       case COMBI_BANK_UP:
       case COMBI_BANK_DOWN:
         if (SP[s].Pressed) {
-          if (Current_device == GP10) show_colour(s, GP10_PATCH_COLOUR);
-          if (Current_device == GR55) show_colour(s, GR55_PATCH_COLOUR);
-          if (Current_device == VG99) show_colour(s, VG99_PATCH_COLOUR);
+          if (Current_device == GP10) LED_show_colour(s, GP10_PATCH_COLOUR);
+          if (Current_device == GR55) LED_show_colour(s, GR55_PATCH_COLOUR);
+          if (Current_device == VG99) LED_show_colour(s, VG99_PATCH_COLOUR);
         }
         else {
-          if (Current_device == GP10) show_colour(s, GP10_PATCH_COLOUR + 10);
-          if (Current_device == GR55) show_colour(s, GR55_PATCH_COLOUR + 10);
-          if (Current_device == VG99) show_colour(s, VG99_PATCH_COLOUR + 10);
+          if (Current_device == GP10) LED_show_colour(s, GP10_PATCH_COLOUR + 10);
+          if (Current_device == GR55) LED_show_colour(s, GR55_PATCH_COLOUR + 10);
+          if (Current_device == VG99) LED_show_colour(s, VG99_PATCH_COLOUR + 10);
         }
         break;
       case TAP_TEMPO:
-        show_colour(s, global_tap_tempo_LED);
+        LED_show_colour(s, global_tap_tempo_LED);
         break;
       case SELECT_PAGE:
-        if (SP[s].Pressed) show_colour(s, GLOBAL_STOMP_COLOUR);
-        else show_colour(s, 0);
+        if ((SP[s].Pressed) || (SP[s].PP_number == Previous_page)) LED_show_colour(s, GLOBAL_STOMP_COLOUR);
+        else LED_show_colour(s, 0);
         break;
       case STANDBYE:
-        show_colour(s, 11);
+        LED_show_colour(s, 11);
         break;
       default:
-        show_colour(s, 0); // Show nothing with undefined LED
+        LED_show_colour(s, 0); // Show nothing with undefined LED
     }
   }
   LEDs.show();
   //DEBUGMSG("LEDs updated");
 }
 
-void show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specified LED to the specified colour
+void LED_show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specified LED to the specified colour
   uint8_t number_fixed = colour_number % 100; // In case of flashing LEDS this will take off the extra 100.
   if (number_fixed < NUMBER_OF_COLOURS) {
     if (colour_number < 100) { // Check if it is not a flashing LED
       // Turn the LED on
-      LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
-      Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
+      if (PHYSICAL_LEDS) LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
+      if (VIRTUAL_LEDS) Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
     }
     else { // Update flashing LED
       if (LED_flashing_state_on == true) {
         // Turn the LED on
-        LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
-        Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
+        if (PHYSICAL_LEDS) LEDs.setPixelColor(LED_order[LED_number], LEDs.Color(colours[number_fixed].green, colours[number_fixed].red, colours[number_fixed].blue));
+        if (VIRTUAL_LEDS) Set_virtual_LED_colour(LED_number, number_fixed); // Update the virtual LEDs on the LCD as well
       }
       else {
         // Turn the LED off
-        LEDs.setPixelColor(LED_order[LED_number], 0, 0, 0);
-        Set_virtual_LED_colour(LED_number, 0); // Update the virtual LEDs on the LCD as well
+        if (PHYSICAL_LEDS) LEDs.setPixelColor(LED_order[LED_number], 0, 0, 0);
+        if (VIRTUAL_LEDS) Set_virtual_LED_colour(LED_number, 0); // Update the virtual LEDs on the LCD as well
       }
     }
   }
@@ -311,14 +313,14 @@ void show_colour(uint8_t LED_number, uint8_t colour_number) { // Sets the specif
   }
 }
 
-void turn_all_LEDs_off() {
+void LED_turn_all_off() {
   for (uint8_t count = 0; count < NUMLEDS; count++) {
     LEDs.setPixelColor(count, LEDs.Color(0, 0, 0));
   }
   // LEDs.show();
 }
 
-void flash_LEDs() {
+void LED_flash() {
   // Check if timer needs to be set
   if (LEDflashTimer == 0) {
     LEDflashTimer = millis();

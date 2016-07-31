@@ -1,4 +1,25 @@
-// VController v2
+/****************************************************************************
+**
+** Copyright (C) 2015 Catrinus Feddema
+** All rights reserved.
+** This file is part of "VController v2" teensy software.
+**
+** This program is free software; you can redistribute it and/or modify
+** it under the terms of the GNU General Public License as published by
+** the Free Software Foundation; either version 2 of the License, or
+** (at your option) any later version.
+**
+** This program is distributed in the hope that it will be useful,
+** but WITHOUT ANY WARRANTY; without even the implied warranty of
+** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+** GNU General Public License for more details.
+**
+** You should have received a copy of the GNU General Public License along
+** with this program; if not, write to the Free Software Foundation, Inc.,
+** 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+**
+****************************************************************************/
+
 // Documentation on the bottom of this page
 
 void setup() {
@@ -13,11 +34,12 @@ void setup() {
 }
 
 void loop() {
-  main_switch_check(); //Check for switches pressed
-  main_switch_control(); // take the configured action
-  main_LED_control(); //Update the LEDs
-  main_LCD_control();
+  main_switch_check(); // Check for switches pressed
+  main_switch_control(); //If switch is pressed, take the configured action
+  main_LED_control(); //Check update of LEDs
+  main_LCD_control(); //Check update of displays
   main_MIDI_common(); //Read MIDI ports
+  main_page(); // Check update of entire page
 }
 
 bool debug_active = true; // Switch debugging on or off here
@@ -39,7 +61,7 @@ Hardware;
 - 16 momentary switches connected in keypad matrix
 - 16 neopixel LEDs
 - 12 LCD displays for first 12 switches + main LCD display - all 16x2 character displays
-- Teensy 3.1 or Teensy LC
+- Teensy 3.1 (or Teensy LC with limited number of devices)
 - 3 MIDI input/outputs and MIDI over USB
 - Extra EEPROM Flash memory: 24LC512
 

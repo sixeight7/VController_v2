@@ -1,3 +1,5 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // ******************************** MIDI messages and functions for the Roland GR-55 ********************************
 uint8_t GR55_MIDI_port = 0;
 // ********************************* Section 1: GR55 SYSEX messages ********************************************
@@ -37,6 +39,7 @@ void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlengt
         if (GR55_patch_number > 2047) GR55_patch_number = GR55_patch_number - 1751; // There is a gap of 1752 patches in the numbering system of the GR-55. This will close it.
         GR55_page_check();
         GR55_do_after_patch_selection();
+        update_page = FULL;
       }
     }
 
@@ -48,28 +51,27 @@ void check_SYSEX_in_GR55(const unsigned char* sxdata, short unsigned int sxlengt
           for (uint8_t count = 0; count < 16; count++) {
             SP[Current_switch].Label[count] = static_cast<char>(sxdata[count + 11]); //Add ascii character to the SP.Label String
           }
-          //update_lcd = Current_switch + 1;
           if (SP[Current_switch].PP_number == GR55_patch_number) {
             GR55_patch_name = SP[Current_switch].Label; // Load patchname when it is read
             update_main_lcd = true; // And show it on the main LCD
           }
           DEBUGMSG(SP[Current_switch].Label);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
         case GR55_PARAMETER:
           GR55_read_parameter(sxdata[11], sxdata[12]);
-          Request_next_switch();
+          PAGE_request_next_switch();
           break;
         case GR55_ASSIGN:
           if (GR55_read_assign_target == false) GR55_read_current_assign(address, sxdata, sxlength);
           else {
             GR55_read_parameter(sxdata[11], sxdata[12]); //Reading the assign target is equal to readig the parameter
-            Request_next_switch();
+            PAGE_request_next_switch();
           }
           break;
       }
     }
-    
+
     // Check if it is the patch name (address: 0x18, 0x00, 0x00, 0x01)
     if ((sxdata[6] == 0x12) && (address == 0x18000001) ) {
       GR55_patch_name = "";
@@ -96,27 +98,57 @@ void check_PC_in_GR55(byte channel, byte program) { // Check incoming PC message
     if (GR55_patch_number != new_patch) {
       GR55_patch_number = new_patch;
       if (GR55_patch_number > 2047) GR55_patch_number = GR55_patch_number - 1751; // There is a gap of 1752 patches in the numbering system of the GR-55. This will close it.
-      request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch  
+      request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
       GR55_page_check();
       GR55_do_after_patch_selection();
     }
   }
 }
 
-void GR55_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
-
-  // Check if it is a GR-55
-  if ((sxdata[6] == 0x53) && (sxdata[7] == 0x02) && (GR55_detected == false)) {
-    GR55_detected = true;
-    show_status_message("GR-55 detected ");
-    GR55_device_id = sxdata[2]; //Byte 2 contains the correct device ID
-    GR55_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
-    DEBUGMSG("GR-55 detected on MIDI port" + String(Current_MIDI_port));
-    request_GR55(GR55_REQUEST_PATCH_NUMBER);
-    request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch  
-      GR55_do_after_patch_selection();
-    load_current_page(true);
+void check_CC_in_GR55(byte channel, byte control, byte value) {  // Check incoming CC messages from GR-55
+  if (channel == GR55_MIDI_channel) { // GR55 outputs a control change message
+    if (control == 0) {
+      GR55_CC01 = value;
+    }
   }
+}
+
+// Detection of GR-55
+
+void GR55_check_detect() { // Started from MIDI/MIDI_check_for_devices()
+  if (GR55_connected) {
+    if (GR55_not_detected >= GR55_MAX_NOT_DETECTED) GR55_disconnect();
+    GR55_not_detected++;
+  }
+}
+
+void GR55_identity_check(const unsigned char* sxdata, short unsigned int sxlength) {
+  // Check if it is a GR-55
+  if ((sxdata[6] == 0x53) && (sxdata[7] == 0x02)) {
+    GR55_not_detected = 0;
+    if (GR55_connected == false) GR55_connect(sxdata[2]); //Byte 2 contains the correct device ID
+  }
+}
+
+void GR55_connect(uint8_t device_id) {
+  GR55_connected = true;
+  LCD_show_status_message("GR-55 connected ");
+  GR55_device_id = device_id; //Byte 2 contains the correct device ID
+  GR55_MIDI_port = Current_MIDI_port; // Set the correct MIDI port for this device
+  DEBUGMSG("GR-55 connected on MIDI port" + String(Current_MIDI_port));
+  request_GR55(GR55_REQUEST_PATCH_NUMBER);
+  request_GR55(GR55_REQUEST_CURRENT_PATCH_NAME); // So the main display always show the correct patch
+  GR55_do_after_patch_selection();
+  update_page = FULL;
+}
+
+void GR55_disconnect() {
+  GR55_connected = false;
+  GR55_on = false;
+  LCD_show_status_message("GR-55 offline   ");
+  DEBUGMSG("GR-55 offline");
+  update_page = FULL;
+  update_main_lcd = true;
 }
 
 // ********************************* Section 3: GR55 common MIDI out functions ********************************************
@@ -129,39 +161,39 @@ void GR55_check_sysex_delay() { // Will delay if last message was within GR55_SY
 void write_GR55(uint32_t address, uint8_t value) { // For sending one data byte
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value); // Calculate the Roland checksum
   uint8_t sysexmessage[14] = {0xF0, 0x41, GR55_device_id, 0x00, 0x00, 0x53, 0x12, ad[3], ad[2], ad[1], ad[0], value, checksum, 0xF7};
   GR55_check_sysex_delay();
   if (GR55_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(14, sysexmessage);
   if (GR55_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(13, sysexmessage);
   if (GR55_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(13, sysexmessage);
   if (GR55_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(13, sysexmessage);
-  debug_sysex(sysexmessage, 14, "out(GR55)");
+  MIDI_debug_sysex(sysexmessage, 14, "out(GR55)");
 }
 
 void write_GR55(uint32_t address, uint8_t value1, uint8_t value2) { // For sending two data bytes
 
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] + value1 + value2); // Calculate the Roland checksum
   uint8_t sysexmessage[15] = {0xF0, 0x41, GR55_device_id, 0x00, 0x00, 0x53, 0x12, ad[3], ad[2], ad[1], ad[0], value1, value2, checksum, 0xF7};
   GR55_check_sysex_delay();
   if (GR55_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(15, sysexmessage);
   if (GR55_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(14, sysexmessage);
   if (GR55_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(14, sysexmessage);
   if (GR55_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(14, sysexmessage);
-  debug_sysex(sysexmessage, 15, "out(GR55)");
+  MIDI_debug_sysex(sysexmessage, 15, "out(GR55)");
 }
 
 void request_GR55(uint32_t address, uint8_t no_of_bytes) {
   uint8_t *ad = (uint8_t*)&address; //Split the 32-bit address into four bytes: ad[3], ad[2], ad[1] and ad[0]
-  uint8_t checksum = calc_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no_of_bytes); // Calculate the Roland checksum
+  uint8_t checksum = MIDI_calc_Roland_checksum(ad[3] + ad[2] + ad[1] + ad[0] +  no_of_bytes); // Calculate the Roland checksum
   uint8_t sysexmessage[17] = {0xF0, 0x41, GR55_device_id, 0x00, 0x00, 0x53, 0x11, ad[3], ad[2], ad[1], ad[0], 0x00, 0x00, 0x00, no_of_bytes, checksum, 0xF7};
   GR55_check_sysex_delay();
   if (GR55_MIDI_port == USBMIDI_PORT) usbMIDI.sendSysEx(17, sysexmessage);
   if (GR55_MIDI_port == MIDI1_PORT) MIDI1.sendSysEx(16, sysexmessage);
   if (GR55_MIDI_port == MIDI2_PORT) MIDI2.sendSysEx(16, sysexmessage);
   if (GR55_MIDI_port == MIDI3_PORT) MIDI3.sendSysEx(16, sysexmessage);
-  debug_sysex(sysexmessage, 17, "out(GR55)");
+  MIDI_debug_sysex(sysexmessage, 17, "out(GR55)");
 }
 
 void GR55_request_patch_number() {
@@ -193,8 +225,8 @@ void GR55_SendProgramChange(uint16_t new_patch) {
     GR55_patch_send = GR55_patch_number;
   }
 
-  Send_CC(0, GR55_patch_send / 128, GR55_MIDI_channel, GR55_MIDI_port);
-  Send_PC(GR55_patch_send % 128, GR55_MIDI_channel, GR55_MIDI_port);
+  MIDI_send_CC(0, GR55_patch_send / 128, GR55_MIDI_channel, GR55_MIDI_port);
+  MIDI_send_PC(GR55_patch_send % 128, GR55_MIDI_channel, GR55_MIDI_port);
   DEBUGMSG("out(GR55) PC" + String(new_patch)); //Debug
   //GP10_mute();
   //VG99_mute();
@@ -209,7 +241,7 @@ void GR55_do_after_patch_selection() {
   Current_device = GR55;
   update_LEDS = true;
   update_main_lcd = true;
-  update_switch_lcds = PARAMETERS;
+  update_page = PAR_ONLY;
   GR55_request_guitar_switch_states();
   //EEPROM.write(EEPROM_GR55_PATCH_MSB, (GR55_patch_number / 256));
   //EEPROM.write(EEPROM_GR55_PATCH_LSB, (GR55_patch_number % 256));
@@ -261,7 +293,7 @@ void GR55_bank_updown(bool updown, uint8_t bank_size) {
 
   if (GR55_bank_number == bank_number) GR55_bank_selection_active = false; //Check whether were back to the original bank
 
-  load_current_page(true); //Re-read the patchnames for this bank
+  update_page = FULL; //Re-read the patchnames for this bank
 }
 
 void GR55_page_check() { // Checks if the current patch is on the page and will reload the page if not
@@ -272,7 +304,61 @@ void GR55_page_check() { // Checks if the current patch is on the page and will 
       GR55_patch_name = SP[s].Label; // Set patchname correctly
     }
   }
-  if (!onpage) load_current_page(true);
+  if (!onpage) {
+    update_page = FULL;
+  }
+}
+
+void GR55_display_patch_number_string() {
+  if (GR55_bank_selection_active == false) {
+    GR55_number_format(GR55_patch_number, Current_patch_number_string);
+  }
+  else {
+    GR55_number_format(GR55_bank_number * GR55_bank_size, Current_patch_number_string);
+  }
+}
+
+void GR55_number_format(uint16_t number, String &Output) {
+  // Uses GR55_patch_number as input and returns Current_patch_number_string as output in format "U01-1"
+  // First character is L for Lead, R for Rhythm, O for Other or U for User
+  // In guitar mode GR55_preset_banks is set to 40, in bass mode it is set to 12, because there a less preset banks in bass mode.
+
+  uint16_t patch_number_corrected = 0; // Need a corrected version of the patch number to deal with the funny numbering system of the GR-55
+  uint16_t bank_number_corrected = 0; //Also needed, because with higher banks, we start counting again
+
+  bank_number_corrected = (number / 3); // Calculate the bank number from the patch number
+
+  if (bank_number_corrected < 99) {
+    Output = Output + "U";
+    patch_number_corrected = number;  //In the User bank all is normal
+  }
+
+  else {
+    if (bank_number_corrected >= (99 + (2 * GR55_preset_banks))) {   // In the Other bank we have to adjust the bank and patch numbers so we start with O01-1
+      Output = Output + "O";
+      patch_number_corrected = number - (297 + (6 * GR55_preset_banks));
+      bank_number_corrected = bank_number_corrected - (99 + (2 * GR55_preset_banks));
+    }
+
+    else {
+      if (bank_number_corrected >= (99 + GR55_preset_banks)) {   // In the Rhythm bank we have to adjust the bank and patch numbers so we start with R01-1
+        Output = Output + "R";
+        patch_number_corrected = number - (297 + (3 * GR55_preset_banks));
+        bank_number_corrected = bank_number_corrected - (99 + GR55_preset_banks);
+      }
+
+      else    {// In the Lead bank we have to adjust the bank and patch numbers so we start with L01-1
+        Output = Output + "L";
+        patch_number_corrected = number - 297;
+        bank_number_corrected = bank_number_corrected - 99;
+      }
+    }
+  }
+
+  // Then add the bank number
+  Output = Output + String(((patch_number_corrected / 3) + 1) / 10) + String(((patch_number_corrected / 3) + 1) % 10);
+  // Finally add the patch number
+  Output = Output + "-" + String((patch_number_corrected % 3) + 1);
 }
 
 // ** US-20 simulation
@@ -328,11 +414,11 @@ void GR55_always_on_toggle() {
     GR55_always_on = !GR55_always_on; // Toggle GR55_always_on
     if (GR55_always_on) {
       GR55_unmute();
-      show_status_message("GR55 always ON");
+      LCD_show_status_message("GR55 always ON");
     }
     else {
       //GR55_mute();
-      show_status_message("GR55 can be muted");
+      LCD_show_status_message("GR55 can be muted");
     }
   }
 }
@@ -367,7 +453,7 @@ void GR55_mute_now() { // Needed a second version, because the GR55 must always 
 // Procedures for the GR55_PARAMETER and GR55_ASSIGN commands
 
 // Procedures for the GR55_PARAMETER:
-// 1. Load in SP array - in load_current_page(true)
+// 1. Load in SP array - in PAGE_load_current(true)
 // 2. Request parameter state - in Request_current_switch()
 // 3. Read parameter state - GR55_read_parameter() below
 // 4. Press switch - GR55_parameter_press() below - also calls GR55_check_update_label()
@@ -494,9 +580,9 @@ void GR55_parameter_press(uint8_t Sw, uint8_t Cmd, uint8_t number) {
 
   // Show message
   GR55_check_update_label(Sw, value);
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  load_current_page(false); // To update the other switch states, we re-load the current page
+  PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void GR55_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
@@ -505,7 +591,7 @@ void GR55_parameter_release(uint8_t Sw, uint8_t Cmd, uint8_t number) {
     SP[Sw].State = 2; // Switch state off
     write_GR55(GR55_parameters[number].Address, Page[Current_page].Switch[Sw].Cmd[Cmd].Value1);
 
-    load_current_page(false); // To update the other switch states, we re-load the current page
+    PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -574,23 +660,21 @@ void GR55_read_parameter(uint8_t byte1, uint8_t byte2) { //Read the current GR55
     msg = msg + ":" + type_name;
   }
   //Copy it to the display name:
-  set_label(Current_switch, msg);
-  //update_lcd = Current_switch + 1;
+  LCD_set_label(Current_switch, msg);
 }
 
 void GR55_check_update_label(uint8_t Sw, uint8_t value) { // Updates the label for extended sublists
   uint8_t index = SP[Sw].PP_number; // Read the parameter number (index to GR55-parameter array)
   if (index != NOT_FOUND) {
     if (GR55_parameters[index].Sublist > 100) { // Check if state needs to be read
-      clear_label(Sw);
+      LCD_clear_label(Sw);
       // Set the display message
       String msg = GR55_parameters[index].Name;
       String type_name = GR55_sublists[GR55_parameters[index].Sublist + value - 101];
       msg = msg + ":" + type_name;
 
       //Copy it to the display name:
-      set_label(Sw, msg);
-      //update_lcd = Current_switch + 1;
+      LCD_set_label(Sw, msg);
     }
   }
 }
@@ -612,7 +696,7 @@ const PROGMEM uint32_t GR55_assign_address[GR55_NUMBER_OF_ASSIGNS] = { 0x1800010
 void GR55_assign_press(uint8_t Sw) { // Switch set to GR55_ASSIGN is pressed
   // Send cc MIDI command to GR-55
   uint8_t cc_number = SP[Sw].Trigger;
-  Send_CC(cc_number, 127, GR55_MIDI_channel, GR55_MIDI_port);
+  MIDI_send_CC(cc_number, 127, GR55_MIDI_channel, GR55_MIDI_port);
 
   // Display the patch function
   if (SP[Sw].Assign_on) {
@@ -621,22 +705,22 @@ void GR55_assign_press(uint8_t Sw) { // Switch set to GR55_ASSIGN is pressed
     else value = SP[Sw].Assign_min;
     GR55_check_update_label(Sw, value);
   }
-  show_status_message(SP[Sw].Label);
+  LCD_show_status_message(SP[Sw].Label);
 
-  if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+  if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
 }
 
 void GR55_assign_release(uint8_t Sw) { // Switch set to GR55_ASSIGN is released
   // Send cc MIDI command to GR-55
   uint8_t cc_number = SP[Sw].Trigger;
-  Send_CC(cc_number, 0, GR55_MIDI_channel, GR55_MIDI_port);
+  MIDI_send_CC(cc_number, 0, GR55_MIDI_channel, GR55_MIDI_port);
 
   // Update status
   if (SP[Sw].Latch == MOMENTARY) {
     if (SP[Sw].Assign_on) SP[Sw].State = 2; // Switch state off
     else SP[Sw].State = 0; // Assign off, so LED should be off as well
 
-    if (SP[Sw].Assign_on) load_current_page(false); // To update the other switch states, we re-load the current page
+    if (SP[Sw].Assign_on) PAGE_load_current(false); // To update the other switch states, we re-load the current page
   }
 }
 
@@ -653,7 +737,7 @@ void GR55_request_current_assign() {
     GR55_read_assign_target = false;
     request_GR55(SP[Current_switch].Address, 12);  //Request 12 bytes for the GR55 assign
   }
-  else Request_next_switch(); // Wrong assign number given in Config - skip it
+  else PAGE_request_next_switch(); // Wrong assign number given in Config - skip it
 }
 
 void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, short unsigned int sxlength) {
@@ -708,8 +792,8 @@ void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
       SP[Current_switch].Colour = GR55_STOMP_COLOUR;
       // Set the Label
       msg = "CC#" + String(SP[Current_switch].Trigger) + " (ASGN" + String(SP[Current_switch].Assign_number) + ")";
-      set_label(Current_switch, msg);
-      Request_next_switch();
+      LCD_set_label(Current_switch, msg);
+      PAGE_request_next_switch();
     }
   }
   else { // Assign is off
@@ -719,8 +803,8 @@ void GR55_read_current_assign(uint32_t address, const unsigned char* sxdata, sho
     SP[Current_switch].Colour = GR55_STOMP_COLOUR; // Set the on colour to default
     // Set the Label
     msg = "CC#" + String(SP[Current_switch].Trigger);
-    set_label(Current_switch, msg);
-    Request_next_switch();
+    LCD_set_label(Current_switch, msg);
+    PAGE_request_next_switch();
   }
 }
 
@@ -795,7 +879,7 @@ const PROGMEM char GR55_preset_patch_names[GR55_NUMBER_OF_FACTORY_PATCHES][17] =
 
 void GR55_read_preset_name(uint8_t number, uint16_t patch) {
   String lbl = GR55_preset_patch_names[patch - 297]; //Read the label from the array
-  set_label(number, lbl);
+  LCD_set_label(number, lbl);
   if (patch == GR55_patch_number) GR55_patch_name = lbl; //Keeps the main display name updated
 }
 

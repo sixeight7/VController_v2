@@ -1,44 +1,62 @@
+// Please read VController_v2.ino for information about the license and authors
+
 // Here an action is taken after a switch is pressed. This action is read from the config file
 
 void setup_switch_control()
 {
-  //reset_all_switch_states();
-  //load_current_page(true);
+  //SCO_reset_all_switch_states();
+  //PAGE_load_current(true);
 }
 
 // Do something with buttons being pressed
 void main_switch_control()  // Checks if a button has been pressed and check out which functions have to be executed
 {
   if (switch_pressed > 0) {
-    if (switch_pressed > 16) show_status_message("Switch " + String(switch_pressed));
-    else switch_pressed_commands(Current_page, switch_pressed - 1);
+    if (switch_pressed > 16) LCD_show_status_message("Switch " + String(switch_pressed));
+    else SCO_switch_pressed_commands(Current_page, switch_pressed - 1);
   }
 
   if (switch_released > 0) {
-    switch_released_commands(Current_page, switch_released - 1);
+    SCO_switch_released_commands(Current_page, switch_released - 1);
   }
 
   if (switch_long_pressed > 0) {
-    //switch_long_pressed_commands(Current_page, switch_long_pressed - 1);
-    if (switch_long_pressed == 16) Switch_VController_standbye(); //Switch VController on/off on long press button 16
+    if (switch_long_pressed == 16) SCO_switch_VController_standbye(); //Switch VController on/off on long press button 16
+    SCO_switch_long_pressed_commands(Current_page, switch_long_pressed - 1);
   }
 
-  update_tap_tempo_LED();
+  if (expr_ped_changed > 0) {
+    //if (expr_ped_changed == 1) SCO_switch_pressed_commands(Current_page, 16);
+    uint8_t index = (expr_ped_changed - 1);
+    MIDI_send_CC(Exp_CC_number[index], Expr_value, Exp_CC_channel[index], Exp_CC_port[index]); // Just send a CC message - can be set on the Config page
+    LCD_show_status_message("CC#" + String(Exp_CC_number[index]) + ": " + String(Expr_value));
+  }
+
+  SCO_update_tap_tempo_LED();
 }
 
-void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
-  //show_status_message("Command: " + String(Command));
+void SCO_switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
   SP[Sw].Pressed = true;
 
   // Run through the commands:
   for (uint8_t c = 0; c < NUMBER_OF_COMMANDS; c++) {
     //execute command
-    uint8_t Data1 = Page[Pg].Switch[Sw].Cmd[c].Data1;
-    uint8_t Data2 = Page[Pg].Switch[Sw].Cmd[c].Data2;
+    uint8_t Type, Data1, Data2;
+    //if (Sw < NUMBER_OF_SWITCHES) { // It is a regular switch
+    Type = Page[Pg].Switch[Sw].Cmd[c].Type;
+    Data1 = Page[Pg].Switch[Sw].Cmd[c].Data1;
+    Data2 = Page[Pg].Switch[Sw].Cmd[c].Data2;
+    //}
+    /*else { // It is an external switch
+      Type = Ext_switch[Sw].Cmd[c].Type;
+      Data1 = Ext_switch[Sw].Cmd[c].Data1;
+      Data2 = Ext_switch[Sw].Cmd[c].Data2;
+      LCD_show_status_message("Type: " + String(Type));
+    }*/
 
-    switch (Page[Pg].Switch[Sw].Cmd[c].Type) {
+    switch (Type) {
       case TAP_TEMPO:
-        global_tap_tempo_press();
+        SCO_global_tap_tempo_press();
         break;
       case GP10_PATCH:
         GP10_patch_select(Data1 - 1);
@@ -55,11 +73,11 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
         GP10_bank_updown(DOWN, Data1);
         break;
       case GP10_PARAMETER:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         GP10_parameter_press(Sw, c, Data1);
         break;
       case GP10_ASSIGN:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         GP10_assign_press(Sw);
         break;
       case GP10_MUTE:
@@ -80,11 +98,11 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
         GR55_bank_updown(DOWN, Data1);
         break;
       case GR55_PARAMETER:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         GR55_parameter_press(Sw, c, Data1);
         break;
       case GR55_ASSIGN:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         GR55_assign_press(Sw);
         break;
       case GR55_MUTE:
@@ -105,11 +123,11 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
         VG99_bank_updown(DOWN, Data1);
         break;
       case VG99_PARAMETER:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         VG99_parameter_press(Sw, c, Data1);
         break;
       case VG99_ASSIGN:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         VG99_assign_press(Sw);
         break;
       case VG99_MUTE:
@@ -132,26 +150,29 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
         ZG3_bank_updown(DOWN, Data1);
         break;
       case ZG3_FX_TOGGLE:
-        if (c == 0) update_parameter_state(Sw);
+        if (c == 0) SCO_update_parameter_state(Sw);
         ZG3_FX_press(Sw, c, Data1);
         break;
       case SELECT_PAGE:
-        select_page(Data1);
+        SCO_select_page(Data1);
+        break;
+      case SELECT_NEXT_DEVICE:
+        SCO_select_next_device();
         break;
       case COMBI_BANK_UP:
-        combi_bank_updown(UP, Data1);
+        SCO_combi_bank_updown(UP, Data1);
         break;
       case COMBI_BANK_DOWN:
-        combi_bank_updown(DOWN, Data1);
+        SCO_combi_bank_updown(DOWN, Data1);
         break;
       case STANDBYE:
-        Switch_VController_on();
+        SCO_switch_VController_on();
         break;
       case MIDI_PC:
-        Send_PC(Data1, Data2, Page[Pg].Switch[Sw].Cmd[c].Value1);
+        MIDI_send_PC(Data1, Data2, Page[Pg].Switch[Sw].Cmd[c].Value1);
         break;
       case MIDI_NOTE:
-        Send_Note_On(Data1, Data2, Page[Pg].Switch[Sw].Cmd[c].Value1, Page[Pg].Switch[Sw].Cmd[c].Value2);
+        MIDI_send_note_on(Data1, Data2, Page[Pg].Switch[Sw].Cmd[c].Value1, Page[Pg].Switch[Sw].Cmd[c].Value2);
         break;
     }
   }
@@ -159,8 +180,8 @@ void switch_pressed_commands(uint8_t Pg, uint8_t Sw) {
   update_main_lcd = true;
 }
 
-void switch_released_commands(uint8_t Pg, uint8_t Sw) {
-  //show_status_message("Command: " + String(Command));
+void SCO_switch_released_commands(uint8_t Pg, uint8_t Sw) {
+  //LCD_show_status_message("Command: " + String(Command));
   SP[Sw].Pressed = false;
 
   // Run through the commands:
@@ -189,7 +210,7 @@ void switch_released_commands(uint8_t Pg, uint8_t Sw) {
         VG99_assign_release(Sw);
         break;
       case MIDI_NOTE:
-        Send_Note_Off(Data1, Page[Pg].Switch[Sw].Cmd[c].Data2, Page[Pg].Switch[Sw].Cmd[c].Value1, Page[Pg].Switch[Sw].Cmd[c].Value2);
+        MIDI_send_note_off(Data1, Page[Pg].Switch[Sw].Cmd[c].Data2, Page[Pg].Switch[Sw].Cmd[c].Value1, Page[Pg].Switch[Sw].Cmd[c].Value2);
         break;
     }
   }
@@ -197,7 +218,17 @@ void switch_released_commands(uint8_t Pg, uint8_t Sw) {
   update_main_lcd = true;
 }
 
-void update_parameter_state(uint8_t Sw) {
+void SCO_switch_long_pressed_commands(uint8_t Pg, uint8_t Sw) {
+  //LCD_show_status_message("Command: " + String(Page[Pg].Switch[Sw].Cmd[0].Type));
+  switch (Page[Pg].Switch[Sw].Cmd[0].Type) {
+    case SELECT_PAGE:
+    case SELECT_NEXT_DEVICE:
+      Current_page = Previous_page; // "Undo" for pressing SELECT_PAGE or SELECT_NEXT_DEVICE
+      SCO_select_page(PAGE_MODE_SELECT);
+      break;
+  }
+}
+void SCO_update_parameter_state(uint8_t Sw) {
   switch (SP[Sw].Latch) {
     case MOMENTARY:
       SP[Sw].State = 1; // Switch state on
@@ -221,7 +252,7 @@ void update_parameter_state(uint8_t Sw) {
   }
 }
 
-void reset_all_switch_states() {
+void SCO_reset_all_switch_states() {
   for (uint8_t p = 0; p < NUMBER_OF_PAGES; p++) {
     for (uint8_t s = 0; s < NUMBER_OF_SWITCHES; s++) {
       switch_state[p][s] = false;
@@ -230,23 +261,52 @@ void reset_all_switch_states() {
 }
 
 // Common functions
-void select_page(uint8_t new_page) {
-  previous_page = Current_page; // Store the mode we come from...
+void SCO_select_page(uint8_t new_page) {
+  Previous_page = Current_page; // Store the mode we come from...
   Current_page = new_page;
-  //EEPROM.write(EEPROM_mode, Current_page); 
-  load_current_page(true);
+  //EEPROM.write(EEPROM_mode, Current_page);
+  update_page = FULL;
 }
 
-void toggle_page(uint8_t page1, uint8_t page2) {
-  previous_page = Current_page; // Store the mode we come from...
-  if (Current_page == page1) select_page(page2);
-  else select_page(page1);
+void SCO_toggle_page(uint8_t page1, uint8_t page2) {
+  Previous_page = Current_page; // Store the mode we come from...
+  if (Current_page == page1) SCO_select_page(page2);
+  else SCO_select_page(page1);
 }
 
-void combi_bank_updown(bool updown, uint8_t bank_size) {
+void SCO_combi_bank_updown(bool updown, uint8_t bank_size) {
   if (Current_device == GP10) GP10_bank_updown(updown, bank_size);
   if (Current_device == GR55) GR55_bank_updown(updown, bank_size);
   if (Current_device == VG99) VG99_bank_updown(updown, bank_size);
+  if (Current_device == ZG3) ZG3_bank_updown(updown, bank_size);
+}
+
+uint8_t current_selected_device = GP10;
+
+void SCO_select_next_device() { // Will select the next device that is connected
+  // Put device connection states in array
+  bool DCS[NUMBER_OF_DEVICES] = {GP10_connected, GR55_connected, VG99_connected, ZG3_connected};
+  uint8_t Tries = NUMBER_OF_DEVICES; // Limited the number of tries for the loop, in case no device is
+  while (Tries > 0) {
+    Tries--;
+    current_selected_device++;
+    DEBUGMSG("Poging:" + String(Tries) + " Device:" + String(current_selected_device));
+    if (current_selected_device >= NUMBER_OF_DEVICES) current_selected_device = 0;
+    if (DCS[current_selected_device] == true) { // device is selected
+      SCO_select_device_page(current_selected_device);
+      Tries = 0; //And we are done
+    }
+  }
+}
+
+void SCO_select_device_page(uint8_t device) {
+  uint8_t page;
+  if (device == GP10) page = PAGE_GP10_RELSEL;
+  if (device == GR55) page = PAGE_GR55_RELSEL;
+  if (device == VG99) page = PAGE_VG99_RELSEL;
+  if (device == ZG3) page = PAGE_ZG3_RELSEL;
+  DEBUGMSG("Select page: " + String(page));
+  SCO_select_page(page);
 }
 
 // ************************ Start Global tap tempo ************************
@@ -261,7 +321,7 @@ uint8_t tap_time_index = 0;
 uint32_t new_time, time_diff, avg_time;
 uint32_t prev_time = 0;
 
-void global_tap_tempo_press() {
+void SCO_global_tap_tempo_press() {
 
   new_time = micros(); //Store the current time
   time_diff = new_time - prev_time;
@@ -307,9 +367,9 @@ void global_tap_tempo_press() {
     // Move to the next memory slot
     tap_time_index++;
   }
-  show_status_message("Tempo " + String(bpm) + " bpm");
-  update_lcd = switch_pressed;
-  reset_tap_tempo_LED();
+  LCD_show_status_message("Tempo " + String(bpm) + " bpm");
+  LCD_update(switch_pressed - 1);
+  SCO_reset_tap_tempo_LED();
 }
 
 #define BPM_LED_ON_TIME 100 // The time the bpm LED is on in msec. 50 for real LED, 100 for virtual LED
@@ -317,7 +377,7 @@ void global_tap_tempo_press() {
 uint32_t bpm_LED_timer = 0;
 uint32_t bpm_LED_timer_length = BPM_LED_ON_TIME;
 
-void update_tap_tempo_LED() {
+void SCO_update_tap_tempo_LED() {
 
   // Check if timer needs to be set
   if (bpm_LED_timer == 0) {
@@ -343,7 +403,7 @@ void update_tap_tempo_LED() {
   }
 }
 
-void reset_tap_tempo_LED() {
+void SCO_reset_tap_tempo_LED() {
   bpm_LED_timer = millis();
   global_tap_tempo_LED = BPM_COLOUR_ON;    // Turn the LED on
   //VG99_TAP_TEMPO_LED_ON();
@@ -359,56 +419,55 @@ void reset_tap_tempo_LED() {
 #define BASS_MIN_VEL 100 // Minimum velocity - messages below it ae ignored
 uint8_t bass_string = 0; //remembers the current midi channel
 
-void bass_mode_note_on(byte channel, byte note, byte velocity) {
+void SCO_bass_mode_note_on(byte channel, byte note, byte velocity) {
   if ((channel >= GUITAR_TO_MIDI_CHANNEL) && (channel <= GUITAR_TO_MIDI_CHANNEL + 6)) {
     uint8_t string_played = channel - GUITAR_TO_MIDI_CHANNEL + 1;
     if ((string_played > bass_string) && (velocity >= BASS_MIN_VEL)) {
       bass_string = string_played; //Set the bass play channel to the current channel
-      Send_CC(BASS_CC_NUMBER , bass_string, BASS_CC_CHANNEL, BASS_CC_PORT);
+      MIDI_send_CC(BASS_CC_NUMBER , bass_string, BASS_CC_CHANNEL, BASS_CC_PORT);
     }
   }
 }
 
-void bass_mode_note_off(byte channel, byte note, byte velocity) {
+void SCO_bass_mode_note_off(byte channel, byte note, byte velocity) {
   if ((channel >= GUITAR_TO_MIDI_CHANNEL) && (channel <= GUITAR_TO_MIDI_CHANNEL + 6)) {
     uint8_t string_played = channel - GUITAR_TO_MIDI_CHANNEL + 1;
     if (string_played == bass_string) bass_string = 0; //Reset the bass play channel
   }
 }
 
-void Switch_VController_toggle() {
-  if (VController_on) Switch_VController_standbye();
-  else Switch_VController_on();
+void SCO_switch_VController_toggle() {
+  if (VController_on) SCO_switch_VController_standbye();
+  else SCO_switch_VController_on();
 }
 
-void Switch_VController_standbye() {
+void SCO_switch_VController_standbye() {
   // Store current values in memory
   VController_on = false;
-  Current_page = previous_page; // Undo the page change of button 16
-  write_eeprom_common_data();
+  Current_page = Previous_page; // Undo the page change of button 16
+  EEP_write_eeprom_common_data();
 
   // Select page 0 - it has all LEDs and switches turned off
-  select_page(0);
+  SCO_select_page(0);
 
   // Turn off LCD backlights
   LCD_backlight_off();
 }
 
-void Switch_VController_on() {
+void SCO_switch_VController_on() {
   // Store current values in memory
   VController_on = true;
-  read_eeprom_common_data();
+  EEP_read_eeprom_common_data();
 
   // Turn off LCD backlights
   LCD_backlight_on();
 
   // Select page
   if (Current_page == 0) Current_page = 1; // Check if it is not zero - otherwise you cannot switch the VController on
-  select_page(Current_page);
+  SCO_select_page(Current_page);
 
   // Show startup message
-  Main_lcd.home(); // go home
-  Main_lcd.print("V-controller v2");  // Show startup message
-  show_status_message("  by SixEight");  //Please give me the credits :-)
+  LCD_show_startup_message();
 }
+
 
