@@ -1,5 +1,6 @@
 # VController version 2
 Second version of the dedicated MIDI controller for Boss GP-10  / Roland GR-55 / Roland VG-99 and Zoom G3
+The latest version is the VController version 3: https://github.com/sixeight7/VController_v3
 
 # Features
 * Patch selection - view of patch names for all devices.
