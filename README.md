@@ -8,7 +8,7 @@ The latest version is the VController version 3: https://github.com/sixeight7/VC
 * GP10 and GR55: change fixed parameters and cc assigns on each patch. Display tells you which parameter is changed and buttons have a colour that shows you the type of FX you select.
 * VG99: pedal simulates an FC300 for CTL-1 to CTL-8. Parameter names and colours displayed for the most common parameters. CC assigns and fixed parameters also possible.
 * For fixed parameters three/four and five state switches can be programmed
-* Zoom G5: support of patch names / control of the 6 effects (on/off) - FX name is displayed, tap tempo.
+* Zoom G3: support of patch names / control of the 6 effects (on/off) - FX name is displayed, tap tempo.
 * Global Tap Tempo: all devices pick up the tempo from the V-Controller. There is the option to keep this tempo on all patches on all devices.
 * US-20 simulation: smart muting of GP10, GR55 or VG99 by switching off the COSM guitar/synth/normal PU on the devices that are not active.
 * Autobass mode: sends a CC message with the number of the lowest string that is being played (CC #15)
